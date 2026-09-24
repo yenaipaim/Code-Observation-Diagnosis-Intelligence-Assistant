@@ -1,0 +1,12 @@
+.vscode/**
+.github/**
+src/**
+docs/**
+**/*.map
+**/*.test.js
+tsconfig.json
+*.vsix
+.gitattributes
+.gitignore
+.editorconfig
+CONTRIBUTING.md

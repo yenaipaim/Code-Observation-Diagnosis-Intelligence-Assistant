@@ -1,0 +1,376 @@
+:root {
+  color-scheme: light dark;
+  --coach-accent: var(--vscode-textLink-foreground);
+  --coach-danger: var(--vscode-errorForeground);
+  --coach-success: #3fa66b;
+  --coach-warning: #d8a63b;
+  --coach-muted: var(--vscode-descriptionForeground);
+  --coach-border: var(--vscode-widget-border, color-mix(in srgb, currentColor 18%, transparent));
+  --coach-surface: var(--vscode-sideBar-background);
+  --coach-input: var(--vscode-input-background);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 14px;
+  color: var(--vscode-foreground);
+  background: var(--coach-surface);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 5px 10px;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+button.secondary {
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+
+button.secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+button.danger {
+  color: var(--vscode-errorForeground);
+  background: color-mix(in srgb, var(--vscode-errorForeground) 12%, transparent);
+  border-color: color-mix(in srgb, var(--vscode-errorForeground) 45%, transparent);
+}
+
+button.danger:hover {
+  background: color-mix(in srgb, var(--vscode-errorForeground) 20%, transparent);
+}
+
+button.icon-button {
+  width: 28px;
+  min-height: 26px;
+  flex: 0 0 28px;
+  padding: 3px;
+  color: var(--coach-muted);
+  background: transparent;
+  border-color: transparent;
+}
+
+button.icon-button:hover {
+  color: var(--vscode-errorForeground);
+  background: color-mix(in srgb, var(--vscode-errorForeground) 12%, transparent);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+}
+
+.topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--coach-border);
+}
+
+.level-title {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--coach-warning);
+}
+
+.status-dot.error {
+  background: var(--coach-danger);
+}
+
+.status-dot.success {
+  background: var(--coach-success);
+}
+
+.section {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--coach-border);
+}
+
+.section:last-child {
+  border-bottom: 0;
+}
+
+.eyebrow {
+  margin-bottom: 6px;
+  color: var(--coach-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.message {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.hint {
+  margin: 0;
+  padding: 10px 11px;
+  border-left: 3px solid var(--coach-accent);
+  border-radius: 4px;
+  color: #fff;
+  background: #000;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.code-block {
+  max-height: 420px;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--coach-border);
+  border-radius: 4px;
+  padding: 10px;
+  background: var(--vscode-textCodeBlock-background, #1f1f1f);
+}
+
+.code-block code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.actions > button {
+  flex: 1 1 auto;
+}
+
+textarea {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
+  padding: 8px;
+  color: var(--vscode-input-foreground);
+  background: var(--coach-input);
+  outline: none;
+}
+
+textarea:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--coach-muted);
+  font-size: 11px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  border: 1px solid var(--coach-border);
+  border-radius: 10px;
+  padding: 1px 7px;
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--coach-accent) 13%, transparent);
+}
+
+.notice {
+  padding: 10px 0;
+  color: var(--vscode-foreground);
+}
+
+.notice strong {
+  color: var(--coach-warning);
+}
+
+.empty {
+  display: grid;
+  min-height: 70vh;
+  place-items: center;
+  text-align: center;
+  color: var(--coach-muted);
+}
+
+.log-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.log-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--coach-border);
+}
+
+.log-item.highlight {
+  margin: 0 -8px;
+  padding: 10px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--coach-accent) 14%, transparent);
+  outline: 1px solid var(--coach-accent);
+}
+
+.log-item:last-child {
+  border-bottom: 0;
+}
+
+.log-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.log-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.log-title {
+  font-weight: 650;
+}
+
+.log-time,
+.log-detail {
+  color: var(--coach-muted);
+  font-size: 11px;
+}
+
+.log-detail {
+  margin-top: 5px;
+  line-height: 1.45;
+}
+
+.error-details {
+  margin-top: 7px;
+}
+
+.error-details summary {
+  color: var(--coach-accent);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.log-location {
+  margin-top: 7px;
+  color: var(--coach-muted);
+  font-size: 11px;
+}
+
+.error-details .message {
+  margin-top: 5px;
+  font-size: 11px;
+}
+
+.error-details .code-block {
+  max-height: 220px;
+  margin-top: 7px;
+}
+
+.progress-item {
+  margin: 0 0 12px;
+}
+
+.concept-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 10px;
+  margin-bottom: 12px;
+}
+
+.concept-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+}
+
+.concept-option input {
+  flex: 0 0 auto;
+}
+
+.progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.progress-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.progress-value {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--coach-accent);
+}
+
+@media (max-width: 260px) {
+  body {
+    padding: 10px;
+  }
+
+  .actions > button {
+    flex-basis: 100%;
+  }
+}

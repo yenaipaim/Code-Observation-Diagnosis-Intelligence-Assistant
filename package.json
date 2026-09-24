@@ -1,0 +1,133 @@
+{
+  "name": "programming-coach",
+  "displayName": "CODIA - 编程学习助手",
+  "description": "CODIA is a Socratic Python debugging coach for VS Code.",
+  "version": "0.4.1",
+  "publisher": "local",
+  "license": "MIT",
+  "icon": "media/codia-icon.png",
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=18"
+  },
+  "categories": [
+    "Education",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "python",
+    "debugging",
+    "education",
+    "ai",
+    "deepseek",
+    "vscode-extension"
+  ],
+  "galleryBanner": {
+    "color": "#0B2456",
+    "theme": "dark"
+  },
+  "activationEvents": [
+    "onLanguage:python",
+    "onView:programmingCoach.panel",
+    "onView:programmingCoach.learningLog",
+    "onCommand:programmingCoach.configureApiKey",
+    "onCommand:programmingCoach.openPanel"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "programmingCoach.configureApiKey",
+        "title": "调试教练：设置 API",
+        "icon": "$(key)"
+      },
+      {
+        "command": "programmingCoach.openPanel",
+        "title": "调试教练：打开闯关面板",
+        "icon": "$(question)"
+      },
+      {
+        "command": "programmingCoach.openLearningLog",
+        "title": "调试教练：打开学习日志",
+        "icon": "$(history)"
+      },
+      {
+        "command": "programmingCoach.runPythonFile",
+        "title": "调试教练：运行当前 Python 文件并分析",
+        "icon": "$(debug-alt)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "programmingCoach.openPanel",
+          "when": "resourceLangId == python",
+          "group": "navigation@0"
+        },
+        {
+          "command": "programmingCoach.runPythonFile",
+          "when": "resourceLangId == python",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "programmingCoach",
+          "title": "CODIA",
+          "icon": "media/coach.svg"
+        }
+      ]
+    },
+    "views": {
+      "programmingCoach": [
+        {
+          "id": "programmingCoach.panel",
+          "name": "调试教练",
+          "type": "webview"
+        },
+        {
+          "id": "programmingCoach.learningLog",
+          "name": "学习日志",
+          "type": "webview"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CODIA",
+      "properties": {
+        "programmingCoach.apiBaseUrl": {
+          "type": "string",
+          "default": "https://api.deepseek.com",
+          "description": "OpenAI 兼容 API 基础地址。扩展会自动补 /chat/completions；默认使用 DeepSeek。",
+          "scope": "application"
+        },
+        "programmingCoach.apiModel": {
+          "type": "string",
+          "default": "deepseek-chat",
+          "description": "Chat Completions 模型 ID。默认使用 DeepSeek 的 deepseek-chat。",
+          "scope": "application"
+        },
+        "programmingCoach.demoMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "使用本地预缓存，不调用外部 API。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "compile": "npm run clean && tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test \"dist/test/*.test.js\"",
+    "package": "node -e \"require('node:fs').mkdirSync('artifacts',{recursive:true})\" && npm exec --yes @vscode/vsce -- package --out artifacts/programming-coach.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.7.2"
+  }
+}

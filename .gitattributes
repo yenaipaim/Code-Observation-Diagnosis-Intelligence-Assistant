@@ -1,0 +1,9 @@
+* text=auto
+
+*.json text eol=lf
+*.md text eol=lf
+*.ts text eol=lf
+*.yml text eol=lf
+
+*.png binary
+*.vsix binary
