@@ -29,15 +29,7 @@
 
 ## 安装
 
-扩展发布到 VS Code Marketplace 后，可在扩展面板搜索 `CODIA` 安装。
-
-也可以使用生成的 VSIX 安装：
-
-1. 打开 VS Code 的扩展面板。
-2. 点击右上角菜单。
-3. 选择 `Install from VSIX...`。
-4. 选择对应的 VSIX 文件。
-5. 按提示重新加载窗口。
+扩展已经发布到 VS Code Marketplace ，可在扩展面板搜索 `CODIA` 安装。
 
 ## 意见交流
 
@@ -134,27 +126,9 @@ API Key 不会写入学习数据或 VS Code 设置文件，只保存在操作系
 
 启用外部 API 后，扩展会向所选服务发送完成分类、提示、答案和判断所需的报错信息及代码内容。扩展不会自行进行云端同步。
 
-## 开发
-
-安装依赖并运行测试：
-
-```powershell
-npm ci
-npm run compile
-npm test
-```
-
-在 VS Code 中按 `F5`，可以启动加载当前扩展的 Extension Development Host。
-
-生成 VSIX 安装包：
-
-```powershell
-npm run package
-```
-
 ## 当前边界
 
-- 仅支持 Python。
+- 仅支持 Python。（后续更新其他语言）
 - 仅覆盖规则分类器支持的常见错误类型。
 - 学习日志以基础时间线和掌握度概览为主。
 - 不提供云端同步。
