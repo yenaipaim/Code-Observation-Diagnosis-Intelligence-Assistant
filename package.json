@@ -126,7 +126,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "compile": "npm run clean && tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "npm run compile && node --test \"dist/test/*.test.js\"",
+    "test": "npm run compile && node --test dist/test/*.test.js",
     "package": "node -e \"require('node:fs').mkdirSync('artifacts',{recursive:true})\" && npm exec --yes @vscode/vsce -- package --out artifacts/programming-coach.vsix"
   },
   "devDependencies": {
