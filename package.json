@@ -3,7 +3,11 @@
   "displayName": "CODIA - 编程学习助手",
   "description": "CODIA is a Socratic Python debugging coach for VS Code.",
   "version": "0.4.1",
-  "publisher": "local",
+  "publisher": "codia",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yenaipaim/Code-Observation-Diagnosis-Intelligence-Assistant.git"
+  },
   "license": "MIT",
   "icon": "media/codia-icon.png",
   "engines": {

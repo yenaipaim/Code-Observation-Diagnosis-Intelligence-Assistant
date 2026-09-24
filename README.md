@@ -1,138 +1,165 @@
 # CODIA
 
-CODIA（Code Observation, Diagnosis, Intelligence & Assistant）是一个嵌入 VS Code 的 Python 调试教练。它监听运行后的终端报错，但不会直接替用户修改代码，而是按“诊断 -> 引导 -> 验证 -> 通关”的流程逐步提问，并把学习结果写入本地学习日志。
+**CODIA**（Code Observation, Diagnosis, Intelligence & Assistant）是一个面向 Python 初学者的 VS Code 调试学习助手。
 
-## 功能
+它不会直接替用户修改代码，而是捕获实际运行产生的 Python traceback，按照“诊断、引导、验证、通关”的流程帮助用户理解问题，并将学习过程记录到本地。
 
-- 只接受显式运行或 VSCode 终端运行产生的 Python traceback，不接入编辑器静态 diagnostics。
-- 运行报错后在对应代码行显示整行高亮、行首 `?` 图标和可点击的 `? 打开闯关界面` 入口，不在代码行内插入文字。
-- 识别差一错误、返回值 vs 打印、类型混淆、未定义名称、语法错误、字典键错误、值转换错误、除零错误、属性错误、导入错误和缩进错误。
-- 规则匹配优先，无法覆盖时使用 OpenAI 兼容的 Chat Completions API 兜底，默认使用 DeepSeek `deepseek-chat`。
-- 每类误概念有 3 个固定引导方向，具体提示结合当前代码和报错动态生成。
-- 对理解和运行代码与标准答案的接近度执行 `correct`、`partial`、`wrong` 三档判断，并在 API 失败时使用关键词兜底。
+## 核心功能
+
+- 仅接收显式运行或终端运行产生的 Python traceback，不接入编辑器静态 diagnostics。
+- 在报错行提供整行高亮、行首标记和可点击的关卡入口。
+- 支持差一错误、返回值与打印混淆、类型不匹配、未定义名称、语法错误、字典键错误、值转换错误、除零错误、属性错误、导入错误和缩进错误。
+- 优先使用本地规则分类，规则无法覆盖时调用 OpenAI 兼容的 Chat Completions API。
+- 每类误概念提供固定引导方向和结合当前代码生成的动态提示。
+- 对用户理解和代码修复程度执行 `correct`、`partial`、`wrong` 三档判断。
 - 维护学习者模型、confidence、尝试次数、跳过次数和学习时间线。
-- 掌握度默认不统计任何项；用户可以手动勾选，运行报错时也会自动勾选对应错误类型。
-- 答案不再要求固定尝试次数；点击后先确认，再展示完整可运行代码和解释，查看答案不加分。
-- 同一关卡可重复练习，但每次完成后得分减半：`1`、`0.5`、`0.25`。
-- 学习日志支持删除单条记录、只清除时间线，以及一键清除日志和掌握度。
-- API Base URL、模型 ID 和 API Key 均可自定义；Key 使用 `vscode.SecretStorage` 保存。
-- 提供完全离线的演示模式。
+- 掌握度默认不统计任何项，支持用户手动选择或由运行错误自动勾选。
+- 同一关卡支持重复练习，完成次数越多，本次得分越低。
+- 学习日志支持单条删除、清除时间线和一键清除。
+- 提供无需外部 API 的离线演示模式。
 
-## 环境
+## 环境要求
 
-- Node.js 18 或更高版本
-- VS Code 1.90 或更高版本
-- Python 解释器
-- OpenAI 兼容服务的 API Key（演示模式不需要）
+| 项目 | 要求 |
+| --- | --- |
+| VS Code | 1.90 或更高版本 |
+| Node.js | 18 或更高版本，仅开发时需要 |
+| Python | 可用的 Python 解释器 |
+| API 服务 | OpenAI 兼容的 Chat Completions 接口，演示模式不需要 |
 
-## 开发
+## 安装
 
-```powershell
-npm install
-npm run compile
-npm run test
+扩展发布到 VS Code Marketplace 后，可在扩展面板搜索 `CODIA` 安装。
+
+也可以使用生成的 VSIX 安装：
+
+1. 打开 VS Code 的扩展面板。
+2. 点击右上角菜单。
+3. 选择 `Install from VSIX...`。
+4. 选择对应的 VSIX 文件。
+5. 按提示重新加载窗口。
+
+## 意见交流
+
+群号：873223130
+
+<img src="img/QQ.png" alt="CODIA 意见交流群" width="33%" />
+
+
+
+## 快速开始
+
+1. 打开一个 Python 文件。
+2. 在命令面板执行 `调试教练：设置 API`。
+3. 依次配置 API Base URL、Chat 模型和 API Key。
+4. 使用编辑器右上角的“运行当前 Python 文件并分析”，或命令面板中的 `调试教练：运行当前 Python 文件并分析`。
+5. 运行失败后，根据报错行入口或左侧面板中的提示完成关卡。
+6. 修复代码后重新运行。退出码为 `0` 且没有 traceback 时，扩展会判定代码已修复。
+
+需要完全离线运行时，可在 VS Code 设置中启用：
+
+```text
+programmingCoach.demoMode
 ```
 
-在 VS Code 中按 `F5`，会启动一个加载本扩展的 Extension Development Host。
+## API 配置
 
-生成 VSIX：
-
-```powershell
-npm run package
-```
-
-安装包输出到 `artifacts/programming-coach.vsix`。
-
-## 使用
-
-1. 打开一个 Python 文件并运行，故意触发受支持的报错。
-2. 左侧活动栏点击“编程学习助手”，打开“调试教练”。
-3. 也可以点击报错行上方的 `? 打开闯关界面`，或编辑器标题栏的 `?` 按钮。
-4. 命令面板执行 `调试教练：设置 API`，依次填写 Base URL、Chat 模型和 API Key。
-5. 需要断网演示时，在设置中开启 `programmingCoach.demoMode`。
-
-运行 Python 时优先使用编辑器右上角的“运行当前 Python 文件并分析”，或命令面板执行 `调试教练：运行当前 Python 文件并分析`。该命令会捕获运行时 traceback。
-
-普通终端运行 Python 时，扩展也会尝试通过 VSCode shell integration 捕获 traceback。若终端没有启用 shell integration，请使用上面的调试教练运行命令。
-
-编辑器里的波浪线、语言服务器诊断和未运行的静态报错不会触发闯关。扩展只处理运行后终端或调试教练运行命令输出中的 Python traceback。
-
-修好代码后，在 VSCode 终端重新运行同一个 Python 文件；命令退出码为 `0` 且没有 traceback 时，面板会识别为“代码跑通”。
-
-未配置 API Key 时，面板会提示配置入口，但不会阻塞代码编辑。默认配置为：
+默认配置使用 DeepSeek：
 
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `programmingCoach.apiBaseUrl` | `https://api.deepseek.com` | OpenAI 兼容 API 基础地址 |
 | `programmingCoach.apiModel` | `deepseek-chat` | Chat Completions 模型 ID |
+| API Key | 无 | 通过 `vscode.SecretStorage` 保存 |
 
-自定义服务必须提供 OpenAI 兼容的 `/chat/completions` 接口，并优先选择 Chat 模型。Base URL 可以填写到服务根路径或 `/v1`，扩展会自动补全 `/chat/completions`；如果填入完整端点也不会重复拼接。
+执行 `调试教练：设置 API` 后，可以配置：
 
-同一文件、误概念、报错原文和错误代码窗口会生成稳定关卡指纹。再次运行同一关卡不会拦截，而是正常开题并按历史完成次数降低本次得分。
+- 任意 OpenAI 兼容服务的 Base URL。
+- 支持 Chat Completions 协议的语言模型。
+- 对应服务的 API Key。
 
-运行结果分析只更新面板状态，不会自动抢走编辑器焦点；只有点击 `?`、CodeLens 或显式命令时才打开面板。
+Base URL 可以填写服务根路径、版本路径或完整端点。扩展会自动补全 `/chat/completions`，不会重复拼接已有端点。
 
-静态诊断消失不等于程序已修好。显式运行或终端运行必须退出码为 `0`，并且终端命令对应当前关卡文件，才会判定代码跑通。
+示例：
 
-学习日志的删除操作都需要二次确认。`清除历史时间线` 只删除日志，掌握度和关卡重复次数保持不变；`一键清除` 同时清除日志、掌握度和关卡历史；单条删除只影响该条日志。时间线条目可以展开查看错误行、报错原文和代码片段。
+```text
+https://api.deepseek.com
+https://api.openai.com/v1
+https://your-provider.example/v1/chat/completions
+```
 
-## 数据文件
+自定义服务应优先选择 Chat 模型，并确保接口兼容 OpenAI Chat Completions 请求与响应格式。
 
-数据写入 VSCode 为此扩展分配的全局存储目录：
+API Key 不会写入学习数据或 VS Code 设置文件，只保存在操作系统密钥链中。
+
+## 运行检测机制
+
+扩展只处理程序实际运行后产生的异常：
+
+- 显式执行“运行当前 Python 文件并分析”命令。
+- 在启用 shell integration 的 VS Code 终端中运行 Python 文件。
+
+编辑器中的波浪线、语言服务器提示和静态 diagnostics 不会触发关卡。
+
+终端命令退出码为 `0` 且没有 Python traceback 时，扩展才会判定代码运行成功。
+
+## 学习与评分
+
+关卡会根据文件、误概念、报错原文和错误代码窗口生成稳定标识。
+
+评分规则如下：
+
+- 理解和修复正确时获得完整奖励。
+- 部分正确时获得部分奖励。
+- 判断错误时会降低 confidence。
+- 重复完成同一关卡时，奖励依次减半：`1`、`0.5`、`0.25`。
+- 查看答案前需要确认，查看答案不会增加得分。
+
+同一关卡可以重复练习，但历史完成次数会被保留，用于防止重复刷分。
+
+## 学习数据与隐私
+
+学习数据保存在 VS Code 为扩展分配的全局存储中：
 
 - `learner-model.json`
 - `learning-log.json`
 
-关卡重复次数保存在 `learner-model.json` 中，防止清除时间线后重置得分倍率。
+学习者模型包含掌握度、confidence 和关卡重复完成记录。学习日志包含时间线、错误位置、报错原文和错误代码片段。
 
-掌握度勾选状态也保存在 `learner-model.json` 中。默认列表为空，用户勾选或运行触发对应错误后，该项才会出现并开始统计。
+学习日志删除操作均需要二次确认：
 
-API Key 不进入 JSON 或 `settings.json`，只保存在操作系统密钥链。Base URL 和模型 ID 保存在 VS Code 设置中。
+- `清除历史时间线`：清除时间线，保留掌握度和关卡历史。
+- `一键清除`：清除日志、掌握度和关卡历史。
+- 单条删除：仅删除选中的日志记录。
 
-## 第一版边界
+启用外部 API 后，扩展会向所选服务发送完成分类、提示、答案和判断所需的报错信息及代码内容。扩展不会自行进行云端同步。
 
-- 只支持 Python。
-- 支持当前规则分类器覆盖的 Python 初学者常见错误类型。
-- 只展示学习日志的第一层时间线，并附带一个基础掌握度概览。
-- 不做云端同步。
-- 不自动修改用户代码。
+## 开发
 
-完整产品规格与实施计划分别位于：
+安装依赖并运行测试：
 
-- `docs/plans/2026-09-23-programming-coach-mvp.md`
-- `docs/DEVELOPMENT_LOG.md`
-
-## 项目结构
-
-```text
-.github/
-  workflows/
-    ci.yml                       GitHub Actions 测试流程
-docs/
-  DEVELOPMENT_LOG.md             大阶段开发日志
-  plans/
-    2026-09-23-programming-coach-mvp.md
-src/
-  extension.ts                 VSCode 入口、命令、终端运行捕获和密钥存储
-  diagnosticListener.ts        诊断数据解析工具，不接入触发流程
-  misconceptionClassifier.ts   误概念规则匹配与 LLM 兜底接口
-  chatClient.ts                OpenAI 兼容 Chat Completions 调用
-  hintGenerator.ts             动态提示、答案生成、理解判断
-  runtimeDiagnostics.ts        Python 终端 traceback 解析
-  learnerModel.ts              学习者模型、confidence 和持久化
-  stateMachine.ts              闯关状态机
-  coachController.ts           业务编排
-  learningLog.ts               时间线与掌握度
-  demoData.ts                  离线演示数据
-  panelProvider.ts             WebviewView Provider
-  test/                        编译后执行的 Node 单元测试
-media/
-  codia-icon.png               扩展品牌图标
-  panel.html
-  panel.css
-  panel.js
-  question.svg
-  coach.svg                    左侧活动栏图标
+```powershell
+npm ci
+npm run compile
+npm test
 ```
 
-历史 VSIX 和本地打包产物统一放在被 Git 忽略的 `artifacts/` 目录，不进入源码仓库。
+在 VS Code 中按 `F5`，可以启动加载当前扩展的 Extension Development Host。
+
+生成 VSIX 安装包：
+
+```powershell
+npm run package
+```
+
+## 当前边界
+
+- 仅支持 Python。
+- 仅覆盖规则分类器支持的常见错误类型。
+- 学习日志以基础时间线和掌握度概览为主。
+- 不提供云端同步。
+- 不自动修改用户代码。
+
+## 许可证
+
+本项目使用 MIT License。
