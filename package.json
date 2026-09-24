@@ -2,7 +2,7 @@
   "name": "programming-coach",
   "displayName": "CODIA - 编程学习助手",
   "description": "CODIA is a Socratic Python debugging coach for VS Code.",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "publisher": "codia",
   "repository": {
     "type": "git",
