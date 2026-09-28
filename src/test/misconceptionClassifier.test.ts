@@ -111,3 +111,86 @@ test("classifies common Python runtime error families", () => {
     );
   }
 });
+
+test("classifies common Java runtime error families", () => {
+  const cases = [
+    [
+      "java.lang.NullPointerException: Cannot invoke method",
+      "null_reference"
+    ],
+    [
+      "java.lang.ArrayIndexOutOfBoundsException: Index 3 out of bounds for length 3",
+      "index_out_of_bounds"
+    ],
+    [
+      "java.lang.ClassCastException: class A cannot be cast to class B",
+      "class_cast_error"
+    ],
+    [
+      "java.lang.ArithmeticException: / by zero",
+      "zero_division"
+    ],
+    [
+      "java.lang.NumberFormatException: For input string: \"abc\"",
+      "value_error"
+    ],
+    ["cannot find symbol", "name_error"],
+    ["incompatible types: String cannot be converted to int", "type_mismatch"],
+    ["java.lang.ClassNotFoundException: Missing", "import_error"],
+    ["';' expected", "syntax_error"]
+  ] as const;
+
+  for (const [message, concept] of cases) {
+    assert.equal(
+      classifyByRules({
+        language: "java",
+        message,
+        errorLine: 1,
+        code: "class Main {}"
+      })?.concept,
+      concept
+    );
+  }
+});
+
+test("classifies common JavaScript runtime error families", () => {
+  const cases = [
+    ["ReferenceError: score is not defined", "name_error"],
+    ["TypeError: Cannot read properties of null (reading 'name')", "null_reference"],
+    ["RangeError: Invalid array length", "index_out_of_bounds"],
+    ["TypeError: value.toFixed is not a function", "attribute_error"],
+    ["SyntaxError: Unexpected token ')'", "syntax_error"],
+    ["Error [ERR_MODULE_NOT_FOUND]: Cannot find module './missing.js'", "import_error"],
+    ["UnhandledPromiseRejection: Error: failed", "async_error"]
+  ] as const;
+
+  for (const [message, concept] of cases) {
+    assert.equal(
+      classifyByRules({
+        language: "javascript",
+        message,
+        errorLine: 1,
+        code: "const value = null;"
+      })?.concept,
+      concept
+    );
+  }
+});
+
+test("rejects fallback concepts that are invalid for the language", async () => {
+  const result = await classifyMisconception(
+    {
+      language: "java",
+      message: "Unknown failure",
+      errorLine: 1,
+      code: "class Main {}"
+    },
+    async () => ({
+      concept: "async_error",
+      confidence: 0.8,
+      source: "llm"
+    })
+  );
+
+  assert.equal(result, undefined);
+});

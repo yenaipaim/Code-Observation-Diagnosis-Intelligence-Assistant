@@ -99,15 +99,15 @@ test("a runtime error auto-selects its mastery item", async () => {
   const { controller, getModel } = harness();
   await controller.openDiagnostic(snapshot());
 
-  assert.deepEqual(getModel().trackedConcepts, ["off_by_one"]);
+  assert.deepEqual(getModel().trackedConcepts, ["python:off_by_one"]);
 });
 
 test("a user can manually select and clear a mastery item", async () => {
   const { controller, getModel } = harness();
-  await controller.setTrackedConcept("name_error", true);
-  assert.deepEqual(getModel().trackedConcepts, ["name_error"]);
+  await controller.setTrackedConcept("python:name_error", true);
+  assert.deepEqual(getModel().trackedConcepts, ["python:name_error"]);
 
-  await controller.setTrackedConcept("name_error", false);
+  await controller.setTrackedConcept("python:name_error", false);
   assert.deepEqual(getModel().trackedConcepts, []);
 });
 
@@ -189,7 +189,10 @@ test("a fixed program completes the level and appends a log", async () => {
   assert.equal(state.stage, "completed");
   assert.equal(logs.length, 1);
   assert.equal(logs[0].resolution, "after_hint");
-  assert.equal(getModel().concepts.off_by_one?.confidence, 0.05);
+  assert.equal(
+    getModel().concepts["python:off_by_one"]?.confidence,
+    0.05
+  );
 });
 
 test("repeated success completion does not append or score twice", async () => {
@@ -202,7 +205,10 @@ test("repeated success completion does not append or score twice", async () => {
 
   assert.equal(state.stage, "completed");
   assert.equal(logs.length, 1);
-  assert.equal(getModel().concepts.off_by_one?.confidence, 0.05);
+  assert.equal(
+    getModel().concepts["python:off_by_one"]?.confidence,
+    0.05
+  );
 });
 
 test("concurrent success events complete the level once", async () => {
@@ -220,7 +226,10 @@ test("concurrent success events complete the level once", async () => {
     ["completed", "completed"]
   );
   assert.equal(logs.length, 1);
-  assert.equal(getModel().concepts.off_by_one?.confidence, 0.05);
+  assert.equal(
+    getModel().concepts["python:off_by_one"]?.confidence,
+    0.05
+  );
 });
 
 test("skipping explanation after a successful fix records unverified learning", async () => {
@@ -234,7 +243,10 @@ test("skipping explanation after a successful fix records unverified learning", 
 
   assert.equal(completed.stage, "completed");
   assert.equal(logs[0].resolution, "unverified");
-  assert.equal(getModel().concepts.off_by_one?.confidence, 0.1);
+  assert.equal(
+    getModel().concepts["python:off_by_one"]?.confidence,
+    0.1
+  );
 });
 
 test("correct understanding cannot be skipped before the code is fixed", async () => {
@@ -277,7 +289,10 @@ test("viewing the answer adds the minimum confidence without completing", async 
   assert.equal(state.confidence, 0.05);
   assert.equal(logs[0].resolution, "viewed_answer");
   assert.equal(logs[0].confidenceDelta, 0.05);
-  assert.equal(getModel().concepts.off_by_one?.confidence, 0.05);
+  assert.equal(
+    getModel().concepts["python:off_by_one"]?.confidence,
+    0.05
+  );
   assert.match(state.message, /理解度 \+5%/);
 });
 
@@ -303,7 +318,7 @@ test("an answer generation failure leaves the level open", async () => {
 test("a wrong explanation lowers confidence by 0.10", async () => {
   const { controller, getModel } = harness({ judgment: "wrong" });
   const model = getModel();
-  model.concepts.off_by_one = {
+  model.concepts["python:off_by_one"] = {
     attempts: 1,
     failures: 1,
     last_seen: "2026-09-23",
@@ -315,7 +330,10 @@ test("a wrong explanation lowers confidence by 0.10", async () => {
   await controller.startChallenge();
   await controller.submitUnderstanding("应该是变量名写错了");
 
-  assert.equal(model.concepts.off_by_one?.confidence, 0.3);
+  assert.equal(
+    model.concepts["python:off_by_one"]?.confidence,
+    0.3
+  );
 });
 
 test("answer prerequisite failure does not complete the level", async () => {
@@ -350,7 +368,7 @@ test("revealed answer contains runnable code before its explanation", async () =
 test("a new level reports only the confidence delta in its log", async () => {
   const { controller, logs, getModel } = harness();
   const model = getModel();
-  model.concepts.off_by_one = {
+  model.concepts["python:off_by_one"] = {
     attempts: 1,
     failures: 1,
     last_seen: "2026-09-23",
@@ -373,7 +391,7 @@ test("same error after completion starts a repeat level", async () => {
   await controller.submitUnderstanding("结束值多跑了一次");
   await controller.markCodeFixed();
   const confidenceAfterCompletion =
-    getModel().concepts.off_by_one?.confidence;
+    getModel().concepts["python:off_by_one"]?.confidence;
 
   const state = await controller.openDiagnostic(snapshot());
   assert.equal(state.stage, "diagnose");
@@ -381,7 +399,7 @@ test("same error after completion starts a repeat level", async () => {
   assert.equal(state.level?.scoreMultiplier, 0.5);
   assert.equal(logs.length, 1);
   assert.equal(
-    getModel().concepts.off_by_one?.confidence,
+    getModel().concepts["python:off_by_one"]?.confidence,
     confidenceAfterCompletion
   );
 });
@@ -393,7 +411,7 @@ test("different code at the same location starts a new level", async () => {
   await controller.submitUnderstanding("结束值多跑了一次");
   await controller.markCodeFixed();
   const confidenceAfterCompletion =
-    getModel().concepts.off_by_one?.confidence;
+    getModel().concepts["python:off_by_one"]?.confidence;
 
   const state = await controller.openDiagnostic({
     ...snapshot(),
@@ -405,7 +423,7 @@ test("different code at the same location starts a new level", async () => {
   assert.equal(state.level?.attempts, 0);
   assert.equal(logs.length, 1);
   assert.equal(
-    getModel().concepts.off_by_one?.confidence,
+    getModel().concepts["python:off_by_one"]?.confidence,
     confidenceAfterCompletion
   );
 });
@@ -426,7 +444,10 @@ test("a repeated challenge scores half", async () => {
   assert.equal(logs[1].repeatCount, 1);
   assert.equal(logs[1].scoreMultiplier, 0.5);
   assert.equal(logs[1].confidenceDelta, 0.03);
-  assert.equal(getModel().concepts.off_by_one?.confidence, 0.08);
+  assert.equal(
+    getModel().concepts["python:off_by_one"]?.confidence,
+    0.08
+  );
 });
 
 test("clearing the visible timeline does not reset repeat scoring", async () => {
@@ -458,4 +479,27 @@ test("a different misconception closes the previous level first", async () => {
   assert.equal(logs.length, 1);
   assert.equal(logs[0].concept, "off_by_one");
   assert.equal(logs[0].resolution, "unverified");
+});
+
+test("Java levels keep language metadata and isolated mastery", async () => {
+  const { controller, logs, getModel } = harness();
+  const javaSnapshot: DiagnosticSnapshot = {
+    language: "java",
+    file: "Main.java",
+    message: "java.lang.NullPointerException",
+    errorLine: 3,
+    code: "class Main { void run() { value.trim(); } }"
+  };
+
+  const opened = await controller.openDiagnostic(javaSnapshot);
+
+  assert.equal(opened.language, "java");
+  assert.equal(opened.languageLabel, "Java");
+  assert.deepEqual(getModel().trackedConcepts, ["java:off_by_one"]);
+  assert.equal(getModel().concepts["python:off_by_one"], undefined);
+
+  await controller.startChallenge();
+  await controller.submitUnderstanding("对象可能为空");
+  await controller.markCodeFixed();
+  assert.equal(logs[0].language, "java");
 });

@@ -2,7 +2,9 @@ import {
   AnswerContent,
   DiagnosticSnapshot,
   HintIndex,
+  LANGUAGE_LABELS,
   MisconceptionId,
+  SupportedLanguage,
   UnderstandingResult
 } from "./types";
 
@@ -46,9 +48,9 @@ type judgmentValue = "correct" | "partial" | "wrong";
 
 const DIRECTIONS: Record<MisconceptionId, Record<HintIndex, string>> = {
   off_by_one: {
-    1: "定位循环边界：引导用户关注 range() 或 while 的边界条件，不要直接提“索引从 0 开始”。",
+    1: "定位循环边界：引导用户关注循环的结束条件，不要直接提“索引从 0 开始”。",
     2: "手动推演：让用户列出循环变量的值，观察最后一次循环发生了什么。",
-    3: "揭示索引规则：提示列表索引从 0 开始，最后一个合法索引是 len-1。"
+    3: "揭示索引规则：提示索引从 0 开始，最后一个合法索引是长度减一。"
   },
   return_vs_print: {
     1: "区分“显示”和“交出”：引导用户思考函数结果的去向。",
@@ -58,7 +60,7 @@ const DIRECTIONS: Record<MisconceptionId, Record<HintIndex, string>> = {
   type_mismatch: {
     1: "检查操作数类型：让用户注意参与运算的两个值是不是同一类。",
     2: "区分数字和文字：提示 3 和 \"3\" 不同，能做加法或只能拼接。",
-    3: "给出转换方法：提示用 str() 或 int() 做显式转换。"
+    3: "给出转换方法：提示使用当前语言提供的显式类型转换。"
   },
   name_error: {
     1: "检查名称定义：引导用户确认变量或函数在使用前是否已经赋值或定义。",
@@ -66,9 +68,9 @@ const DIRECTIONS: Record<MisconceptionId, Record<HintIndex, string>> = {
     3: "定位生命周期：提示名称必须先执行赋值，后续代码才能使用。"
   },
   syntax_error: {
-    1: "检查语句结构：引导用户关注冒号、括号、引号和运算符是否完整。",
+    1: "检查语句结构：引导用户关注括号、引号、分隔符和块边界是否完整。",
     2: "对照上一行：让用户找相似的正确语句，逐项比较符号。",
-    3: "按语法单位检查：条件、循环和函数定义需要正确结构。"
+    3: "按语法单位检查：条件、循环和函数定义需要符合当前语言的块结构。"
   },
   key_error: {
     1: "检查字典键：引导用户确认访问的键是否真实存在。",
@@ -77,8 +79,8 @@ const DIRECTIONS: Record<MisconceptionId, Record<HintIndex, string>> = {
   },
   value_error: {
     1: "检查输入值：引导用户确认传入转换或操作的值是否符合格式。",
-    2: "查看原始字符串：让用户打印转换前的值，确认空格、字母或小数点。",
-    3: "先校验再转换：提示捕获 ValueError 或先验证输入格式。"
+    2: "查看原始字符串：让用户输出转换前的值，确认空格、字母或小数点。",
+    3: "先校验再转换：提示捕获转换异常或先验证输入格式。"
   },
   zero_division: {
     1: "检查除数：引导用户确认除数在运算时是否可能为零。",
@@ -87,18 +89,38 @@ const DIRECTIONS: Record<MisconceptionId, Record<HintIndex, string>> = {
   },
   attribute_error: {
     1: "检查对象类型：引导用户确认变量当前到底是什么类型。",
-    2: "查看可用方法：让用户打印 type 或 dir 来核对属性名称。",
-    3: "使用正确类型：提示字符串、列表和数字拥有的方法不同。"
+    2: "查看可用方法：让用户核对对象实际类型和可用成员名称。",
+    3: "使用正确类型：提示不同对象拥有的属性或方法不同。"
   },
   import_error: {
     1: "检查模块名：引导用户确认导入名称拼写和环境是否一致。",
-    2: "确认安装环境：让用户检查当前 Python 解释器是否安装模块。",
+    2: "确认安装环境：让用户检查当前运行环境是否提供目标模块。",
     3: "核对导入路径：提示标准库、第三方包和本地文件导入方式不同。"
   },
   indentation_error: {
     1: "检查缩进层级：引导用户确认冒号后的代码块是否缩进。",
     2: "统一空格：让用户对齐同一代码块中的语句。",
     3: "检查混合缩进：提示不要混用 tab 和空格。"
+  },
+  null_reference: {
+    1: "检查对象状态：引导用户确认变量在使用前是否可能为空。",
+    2: "追踪来源：让用户查看对象从哪来，哪条分支可能没有赋值。",
+    3: "先判空再使用：提示在访问属性或方法前处理空值。"
+  },
+  index_out_of_bounds: {
+    1: "检查访问位置：引导用户比较索引和集合实际长度。",
+    2: "推演最后一步：让用户列出有效索引范围，检查越界发生在哪一次。",
+    3: "限制边界：提示索引必须小于长度，循环和随机值都要受约束。"
+  },
+  class_cast_error: {
+    1: "检查运行类型：引导用户确认对象实际是什么类型。",
+    2: "对比声明和实例：让用户查看变量被赋值的真实对象。",
+    3: "转换前判断：提示使用类型检查或重新设计转换位置。"
+  },
+  async_error: {
+    1: "检查异步结果：引导用户确认 Promise 失败后由谁处理。",
+    2: "追踪调用链：让用户找到 await、then 或 catch 的缺失位置。",
+    3: "处理拒绝：提示用 try/catch 或 catch 处理异步错误。"
   }
 };
 
@@ -125,7 +147,7 @@ function assertSafeHint(hint: string): void {
 function normalizeAnswerCode(code: string): string {
   const normalized = code.replace(/\r\n?/g, "\n");
   const fenced = normalized.trim().match(
-    /^```(?:python|py)?[ \t]*\n?([\s\S]*?)\n?```$/i
+    /^```[^\n]*\n([\s\S]*?)\n?```$/i
   );
   const content = fenced?.[1] ?? normalized;
   return content.replace(/^\n/, "").replace(/\n[ \t]*$/, "");
@@ -203,16 +225,18 @@ export class HintGenerator {
       throw new Error("API 客户端未配置");
     }
 
+    const language = snapshot.language ?? "python";
     const direction = DIRECTIONS[concept][hintIndex];
     const response = await this.client.completeJson<HintResponse>(
       [
-        "你是 Python 调试教练。",
+        `你是 ${LANGUAGE_LABELS[language]} 调试教练。`,
         "你只能提出一个短小、具体、可回答的引导问题。",
         "禁止给完整修复代码，禁止直接替用户完成修改。",
         `本步固定引导方向：${direction}`,
         "结合用户的具体代码和报错，输出 JSON：{\"hint\":\"...\"}"
       ].join("\n"),
       [
+        `语言：${LANGUAGE_LABELS[language]}`,
         `误概念：${concept}`,
         `报错原文：${snapshot.message}`,
         `报错行：${snapshot.errorLine}`,
@@ -246,8 +270,10 @@ export class HintGenerator {
       throw new Error("API 客户端未配置");
     }
 
+    const language = snapshot.language ?? "python";
     const response = await this.client.completeJson<AnswerResponse>(
       [
+        `目标是 ${LANGUAGE_LABELS[language]} 代码。`,
         "用户已经尝试并主动点击了“看答案”。",
         "只给出当前错误需要修改的最小代码片段，不要返回完整文件、完整函数、完整循环或其他未修改代码。",
         "code 字段必须只包含 startLine 到 endLine 的替换内容，保持原有缩进，不包含 Markdown 代码围栏。",
@@ -258,6 +284,7 @@ export class HintGenerator {
         "输出 JSON：{\"code\":\"...\",\"explanation\":\"...\",\"startLine\":1,\"endLine\":1}"
       ].join("\n"),
       [
+        `语言：${LANGUAGE_LABELS[language]}`,
         `误概念：${concept}`,
         `报错原文：${snapshot.message}`,
         `报错行：${snapshot.errorLine}`,
@@ -349,6 +376,22 @@ const KEYWORDS: Record<
   indentation_error: {
     correct: ["缩进", "空格", "tab", "代码块"],
     partial: ["对齐", "层级", "格式"]
+  },
+  null_reference: {
+    correct: ["为空", "null", "undefined", "判空", "空值"],
+    partial: ["对象", "属性", "初始化"]
+  },
+  index_out_of_bounds: {
+    correct: ["越界", "长度", "索引范围", "小于长度"],
+    partial: ["索引", "数组", "下标"]
+  },
+  class_cast_error: {
+    correct: ["实际类型", "类型不兼容", "强制转换", "instanceof"],
+    partial: ["类型", "转换", "对象"]
+  },
+  async_error: {
+    correct: ["promise", "catch", "await", "异步", "拒绝"],
+    partial: ["异步", "回调", "任务"]
   }
 };
 
@@ -379,11 +422,12 @@ export async function judgeUnderstanding(
   referenceAnswer?: AnswerContent,
   userCode?: string
 ): Promise<UnderstandingResult> {
+  const language: SupportedLanguage = snapshot?.language ?? "python";
   if (client) {
     try {
       const response = await client.completeJson<JudgmentResponse>(
         [
-          "比较 Python 初学者的理解或代码与标准答案的接近度。",
+          `比较 ${LANGUAGE_LABELS[language]} 初学者的理解或代码与标准答案的接近度。`,
           "正确代码执行成功不代表解释分值；必须按接近标准答案判断。",
           "correct：核心机制正确，closeness >= 0.75。",
           "partial：方向接近，closeness 0.40 到 0.74。",
@@ -392,6 +436,7 @@ export async function judgeUnderstanding(
           "只输出 JSON：{\"judgment\":\"correct|partial|wrong\",\"closeness\":0.0,\"reason\":\"...\"}"
         ].join("\n"),
         [
+          `语言：${LANGUAGE_LABELS[language]}`,
           `误概念：${concept}`,
           `报错原文：${snapshot?.message ?? "未提供"}`,
           `报错行：${snapshot?.errorLine ?? "未提供"}`,

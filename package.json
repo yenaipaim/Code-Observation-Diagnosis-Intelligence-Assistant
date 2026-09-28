@@ -1,8 +1,8 @@
 {
   "name": "programming-coach",
   "displayName": "CODIA - 编程学习助手",
-  "description": "CODIA is a Socratic Python debugging coach for VS Code.",
-  "version": "0.4.3",
+  "description": "CODIA is a Socratic Python, Java, and JavaScript debugging coach for VS Code.",
+  "version": "0.5.1",
   "publisher": "codia",
   "repository": {
     "type": "git",
@@ -20,6 +20,9 @@
   ],
   "keywords": [
     "python",
+    "java",
+    "javascript",
+    "node",
     "debugging",
     "education",
     "ai",
@@ -32,10 +35,14 @@
   },
   "activationEvents": [
     "onLanguage:python",
+    "onLanguage:java",
+    "onLanguage:javascript",
     "onView:programmingCoach.panel",
     "onView:programmingCoach.learningLog",
     "onCommand:programmingCoach.configureApiKey",
-    "onCommand:programmingCoach.openPanel"
+    "onCommand:programmingCoach.openPanel",
+    "onCommand:programmingCoach.runCurrentFile",
+    "onCommand:programmingCoach.runPythonFile"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -56,8 +63,13 @@
         "icon": "$(history)"
       },
       {
+        "command": "programmingCoach.runCurrentFile",
+        "title": "调试教练：运行当前文件并分析",
+        "icon": "$(debug-alt)"
+      },
+      {
         "command": "programmingCoach.runPythonFile",
-        "title": "调试教练：运行当前 Python 文件并分析",
+        "title": "调试教练：运行当前 Python 文件并分析（兼容）",
         "icon": "$(debug-alt)"
       }
     ],
@@ -65,13 +77,19 @@
       "editor/title": [
         {
           "command": "programmingCoach.openPanel",
-          "when": "resourceLangId == python",
+          "when": "resourceLangId == python || resourceLangId == java || resourceLangId == javascript",
           "group": "navigation@0"
         },
         {
-          "command": "programmingCoach.runPythonFile",
-          "when": "resourceLangId == python",
+          "command": "programmingCoach.runCurrentFile",
+          "when": "resourceLangId == python || resourceLangId == java || resourceLangId == javascript",
           "group": "navigation@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "programmingCoach.runPythonFile",
+          "when": "false"
         }
       ]
     },
@@ -117,6 +135,16 @@
           "type": "boolean",
           "default": false,
           "description": "使用本地预缓存，不调用外部 API。"
+        },
+        "programmingCoach.javaRuntimePath": {
+          "type": "string",
+          "default": "java",
+          "description": "Java 可执行文件路径；默认从 PATH 查找 java。"
+        },
+        "programmingCoach.javascriptRuntimePath": {
+          "type": "string",
+          "default": "node",
+          "description": "Node.js 可执行文件路径；默认从 PATH 查找 node。"
         }
       }
     }
@@ -127,7 +155,7 @@
     "compile": "npm run clean && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node --test dist/test/*.test.js",
-    "package": "node -e \"require('node:fs').mkdirSync('output/packages',{recursive:true})\" && npm exec --yes @vscode/vsce -- package --out output/packages/programming-coach.vsix"
+    "package": "node scripts/package-vsix.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

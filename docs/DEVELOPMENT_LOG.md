@@ -199,3 +199,27 @@
 - 查看答案会增加最小档理解度 `confidence +0.05`，重复关卡仍按倍数衰减，且不触发通关。
 - 同步调整演示答案、AI 接近度比较提示、面板交互和相关回归测试，测试总数增至 97。
 - 发布版本提升至 `0.4.3`。
+
+## 阶段 20：Java 与 JavaScript 单文件支持
+
+日期：2026-09-28
+
+- 新增 Java 和 JavaScript 支持；HTML 暂不进入激活事件、编辑器菜单、运行器或测试范围。
+- 新增语言运行配置注册表，统一语言识别、终端命令识别、脚本路径提取、运行命令构造、错误解析、规则分类和提示词上下文。
+- Java 使用 `java <file>.java` 运行，解析 javac 错误和 JVM 堆栈，覆盖空指针、越界、类转换、除零、数字格式、名称、类型、导入和语法错误。
+- JavaScript 使用 `node <file>.js|mjs|cjs` 运行，解析 Node.js 语法错误、运行时堆栈和未处理 Promise rejection。
+- 新增 `null_reference`、`index_out_of_bounds`、`class_cast_error` 和 `async_error` 误概念，并按语言限制可用概念集合。
+- 学习者模型与掌握度改用 `语言:误概念` 键；加载旧模型时自动迁移为 `python:<概念>`。
+- 学习日志和面板状态增加语言字段；旧日志缺少语言时迁移为 Python，并在面板中按语言分组显示掌握度与时间线徽标。
+- 新增通用命令 `调试教练：运行当前文件并分析`，保留隐藏的 Python 运行命令作为兼容别名。
+- 新增 `programmingCoach.javaRuntimePath` 和 `programmingCoach.javascriptRuntimePath` 设置。
+- 泛化显式运行、终端监听、报错装饰、CodeLens、成功判定和答案片段替换；非当前关卡语言的文件不会结算当前关卡。
+- Java 显式运行固定英文诊断 locale，终端解析同时兼容中文 javac 错误标记；Node ESM 的 `file://` 堆栈会转换为本地路径。
+- Java 运行时栈中的相对文件名优先按当前运行文件目录解析，避免子目录关卡绑定到错误路径而无法识别修复成功。
+- Java 终端成功识别支持 `java Main`、`java -cp ... Main` 等类名命令，并映射回当前关卡源文件。
+- 演示提示与演示答案按 Java/JavaScript 语法泛化，答案生成支持剥离语言标记代码围栏。
+- 更新扩展清单、关键词、空状态文案、README 和开发日志，版本提升至 `0.5.0`。
+- 增加 Java/JavaScript 错误解析、分类、迁移、语言隔离、命令兼容和清单回归测试，测试总数增至 134；TypeScript 编译与单元测试通过。
+- 使用本机 Java 21 与 Node.js 24 验证真实单文件失败输出格式。
+- 修复 Java 成功后未捕捉的问题，补丁版本提升至 `0.5.1`。
+- 本阶段未执行真实 VS Code Extension Host 图形化巡展。

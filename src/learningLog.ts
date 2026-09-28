@@ -4,14 +4,23 @@ import {
   CONCEPT_LABELS,
   HintIndex,
   DiagnosticSnapshot,
+  LanguageConceptKey,
   LearningLogEntry,
   LearnerModel,
-  MISCONCEPTION_IDS,
+  LANGUAGE_CONCEPT_IDS,
+  LANGUAGE_LABELS,
   MisconceptionId,
-  ResolutionKind
+  ResolutionKind,
+  SUPPORTED_LANGUAGES,
+  SupportedLanguage,
+  isMisconceptionId,
+  isSupportedLanguage,
+  languageConceptKey,
+  parseLanguageConceptKey
 } from "./types";
 
 export interface NewLearningLogEntry {
+  language?: SupportedLanguage;
   fileName: string;
   concept: MisconceptionId;
   resolution: ResolutionKind;
@@ -30,6 +39,8 @@ export interface NewLearningLogEntry {
 }
 
 export interface ProgressSummary {
+  key: LanguageConceptKey;
+  language: SupportedLanguage;
   concept: MisconceptionId;
   label: string;
   confidence: number;
@@ -37,6 +48,8 @@ export interface ProgressSummary {
 }
 
 export interface ConceptOption {
+  key: LanguageConceptKey;
+  language: SupportedLanguage;
   concept: MisconceptionId;
   label: string;
   selected: boolean;
@@ -51,6 +64,7 @@ export function createLearningLogEntry(
     id: `${timestamp}-${input.concept}-${Math.random().toString(16).slice(2)}`,
     timestamp,
     fileName: input.fileName,
+    language: input.language ?? "python",
     concept: input.concept,
     resolution: input.resolution,
     understandingSummary: input.understandingSummary,
@@ -150,7 +164,7 @@ export function findDuplicateLearningLogEntry(
   entries: readonly LearningLogEntry[],
   snapshot: Pick<
     DiagnosticSnapshot,
-    "file" | "errorLine" | "code"
+    "file" | "errorLine" | "code" | "language"
   > & { concept?: MisconceptionId }
 ): LearningLogEntry | undefined {
   const currentFile = normalizeFile(snapshot.file);
@@ -161,6 +175,7 @@ export function findDuplicateLearningLogEntry(
 
   return sortTimeline(entries).find((entry) => {
     if (
+      (snapshot.language ?? "python") !== (entry.language ?? "python") ||
       normalizeFile(entry.fileName) !== currentFile ||
       entry.errorLine !== snapshot.errorLine ||
       (snapshot.concept !== undefined &&
@@ -177,8 +192,12 @@ export function findDuplicateLearningLogEntry(
 }
 
 export function summarizeProgress(model: LearnerModel): ProgressSummary[] {
-  return model.trackedConcepts.map((concept) => {
-    const state = model.concepts[concept];
+  return model.trackedConcepts.flatMap((key) => {
+    const parsed = parseLanguageConceptKey(key);
+    if (!parsed) {
+      return [];
+    }
+    const state = model.concepts[key];
     const confidence = state?.confidence ?? 0;
     const status =
       (state?.consecutive_answers ?? 0) >= 3
@@ -187,24 +206,35 @@ export function summarizeProgress(model: LearnerModel): ProgressSummary[] {
           ? "已掌握"
           : "学习推进中";
 
-    return {
-      concept,
-      label: CONCEPT_LABELS[concept],
+    return [{
+      key,
+      language: parsed.language,
+      concept: parsed.concept,
+      label: CONCEPT_LABELS[parsed.concept],
       confidence,
       status
-    };
+    }];
   });
 }
 
 export function summarizeConceptOptions(
   model: LearnerModel
 ): ConceptOption[] {
-  return MISCONCEPTION_IDS.map((concept) => ({
-    concept,
-    label: CONCEPT_LABELS[concept],
-    selected: model.trackedConcepts.includes(concept),
-    confidence: model.concepts[concept]?.confidence ?? 0
-  }));
+  const options: ConceptOption[] = [];
+  for (const language of SUPPORTED_LANGUAGES) {
+    for (const concept of LANGUAGE_CONCEPT_IDS[language]) {
+      const key = languageConceptKey(language, concept);
+      options.push({
+        key,
+        language,
+        concept,
+        label: CONCEPT_LABELS[concept],
+        selected: model.trackedConcepts.includes(key),
+        confidence: model.concepts[key]?.confidence ?? 0
+      });
+    }
+  }
+  return options;
 }
 
 export class LearningLogStore {
@@ -214,7 +244,12 @@ export class LearningLogStore {
     try {
       const content = await fs.readFile(this.filePath, "utf8");
       const parsed = JSON.parse(content) as unknown;
-      return Array.isArray(parsed) ? (parsed as LearningLogEntry[]) : [];
+      return Array.isArray(parsed)
+        ? parsed.flatMap((value) => {
+            const entry = normalizeLearningLogEntry(value);
+            return entry ? [entry] : [];
+          })
+        : [];
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return [];
@@ -247,6 +282,29 @@ export class LearningLogStore {
   async clear(): Promise<void> {
     await this.save([]);
   }
+}
+
+function normalizeLearningLogEntry(
+  value: unknown
+): LearningLogEntry | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const entry = value as Partial<LearningLogEntry>;
+  if (!isMisconceptionId(entry.concept)) {
+    return undefined;
+  }
+  const language = isSupportedLanguage(entry.language)
+    ? entry.language
+    : "python";
+  if (!LANGUAGE_CONCEPT_IDS[language].includes(entry.concept)) {
+    return undefined;
+  }
+  return {
+    ...(entry as LearningLogEntry),
+    language,
+    concept: entry.concept
+  };
 }
 
 function normalizeFile(fileName: string | undefined): string {

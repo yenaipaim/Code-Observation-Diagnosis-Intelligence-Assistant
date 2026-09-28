@@ -22,9 +22,13 @@ import {
   DiagnosticSnapshot,
   DuplicateErrorReference,
   Judgment,
+  LANGUAGE_LABELS,
+  LanguageConceptKey,
   LearningLogEntry,
   LearnerModel,
-  PanelState
+  PanelState,
+  SupportedLanguage,
+  languageConceptKey
 } from "./types";
 
 export interface ClassificationService {
@@ -81,14 +85,18 @@ const EXPLANATIONS: Record<Classification["concept"], string> = {
   off_by_one: "你访问的位置超出了容器实际拥有的范围。",
   return_vs_print: "函数把结果显示出来了，但没有把结果交给调用者。",
   type_mismatch: "参与运算的两个值类型不同，当前运算不能直接处理。",
-  name_error: "你使用了 Python 当前找不到的名称或变量。",
-  syntax_error: "Python 无法按语法规则解析这行代码。",
+  name_error: "你使用了当前语言找不到的名称或变量。",
+  syntax_error: "当前语言无法按语法规则解析这行代码。",
   key_error: "你访问了字典里不存在的键。",
   value_error: "值的格式或范围不符合当前操作要求。",
   zero_division: "除法或取模运算的除数是零。",
   attribute_error: "这个对象没有你正在访问的属性或方法。",
-  import_error: "Python 无法找到或加载要导入的模块。",
-  indentation_error: "代码块的缩进层级不符合 Python 语法。"
+  import_error: "当前语言无法找到或加载要导入的模块。",
+  indentation_error: "代码块的缩进层级不符合 Python 语法。",
+  null_reference: "代码访问了一个为空的对象或值。",
+  index_out_of_bounds: "访问的位置超出了数组、字符串或集合的合法范围。",
+  class_cast_error: "对象实际类型和目标类型不兼容，不能这样转换。",
+  async_error: "异步任务失败后没有被正确处理。"
 };
 
 export class CoachController {
@@ -98,7 +106,7 @@ export class CoachController {
   private machine?: CoachStateMachine;
   private lastJudgment?: Judgment;
   private stage: PanelState["stage"] = "empty";
-  private message = "等待 Python 报错。";
+  private message = "等待报错。";
   private hint?: string;
   private answer?: AnswerContent;
   private referenceAnswer?: AnswerContent;
@@ -134,7 +142,7 @@ export class CoachController {
   }
 
   async setTrackedConcept(
-    concept: Classification["concept"],
+    concept: LanguageConceptKey,
     tracked: boolean
   ): Promise<PanelState> {
     await this.ensureLoaded();
@@ -158,6 +166,7 @@ export class CoachController {
 
   async openDiagnostic(snapshot: DiagnosticSnapshot): Promise<PanelState> {
     await this.ensureLoaded();
+    const language = snapshot.language ?? "python";
     const classification = await this.options.classifier(snapshot);
     if (!classification) {
       this.stage = "diagnose";
@@ -166,8 +175,12 @@ export class CoachController {
       return this.buildState();
     }
 
-    if (!this.model.trackedConcepts.includes(classification.concept)) {
-      setConceptTracked(this.model, classification.concept, true);
+    const conceptKey = languageConceptKey(
+      language,
+      classification.concept
+    );
+    if (!this.model.trackedConcepts.includes(conceptKey)) {
+      setConceptTracked(this.model, conceptKey, true);
       await this.options.modelStore.save(this.model);
     }
 
@@ -236,7 +249,8 @@ export class CoachController {
         key: challengeKey,
         repeatCount,
         scoreMultiplier: scoreMultiplierForRepeat(repeatCount)
-      }
+      },
+      language
     );
     this.lastJudgment = undefined;
     this.hint = undefined;
@@ -292,7 +306,8 @@ export class CoachController {
         key: challengeKey,
         repeatCount,
         scoreMultiplier: scoreMultiplierForRepeat(repeatCount)
-      }
+      },
+      this.snapshot.language ?? "python"
     );
     this.lastJudgment = undefined;
     this.hint = undefined;
@@ -371,6 +386,7 @@ export class CoachController {
 
     if (result.judgment === "wrong") {
       recordOutcome(this.model, {
+        language: level.language,
         concept: level.concept,
         judgment: "wrong",
         fixed: false,
@@ -537,8 +553,11 @@ export class CoachController {
     this.answer = answer;
     this.referenceAnswer = answer;
     const confidenceBefore =
-      this.model.concepts[level.concept]?.confidence ?? 0;
+      this.model.concepts[
+        languageConceptKey(level.language, level.concept)
+      ]?.confidence ?? 0;
     const state = recordOutcome(this.model, {
+      language: level.language,
       concept: level.concept,
       fixed: false,
       usedHint: true,
@@ -549,6 +568,7 @@ export class CoachController {
       Math.round((state.confidence - confidenceBefore) * 100) / 100;
     await this.options.logStore.append(
       createLearningLogEntry({
+        language: level.language,
         fileName: level.file,
         concept: level.concept,
         resolution: "viewed_answer",
@@ -603,9 +623,12 @@ export class CoachController {
     }
 
     const confidenceBefore =
-      this.model.concepts[level.concept]?.confidence ?? 0;
+      this.model.concepts[
+        languageConceptKey(level.language, level.concept)
+      ]?.confidence ?? 0;
     const judgment = skipped ? undefined : this.lastJudgment;
     const state = recordOutcome(this.model, {
+      language: level.language,
       concept: level.concept,
       judgment,
       fixed: true,
@@ -624,6 +647,7 @@ export class CoachController {
 
     await this.options.logStore.append(
       createLearningLogEntry({
+        language: level.language,
         fileName: level.file,
         concept: level.concept,
         resolution,
@@ -668,6 +692,7 @@ export class CoachController {
 
     await this.options.logStore.append(
       createLearningLogEntry({
+        language: level.language,
         fileName: level.file,
         concept: level.concept,
         resolution: "unverified",
@@ -688,14 +713,19 @@ export class CoachController {
 
   private buildState(): PanelState {
     const level = this.machine?.snapshot();
+    const language = level?.language;
     const conceptState = level
-      ? this.model.concepts[level.concept]
+      ? this.model.concepts[
+          languageConceptKey(level.language, level.concept)
+        ]
       : undefined;
     const confidence = conceptState?.confidence ?? 0;
     const canRevealAnswer = this.machine?.canRevealAnswer() ?? false;
 
     return {
       stage: this.stage,
+      language,
+      languageLabel: language ? LANGUAGE_LABELS[language] : undefined,
       level,
       conceptLabel: level ? CONCEPT_LABELS[level.concept] : undefined,
       message: this.message,

@@ -12,3 +12,4 @@ tsconfig.json
 CONTRIBUTING.md
 output/**
 artifacts/**
+scripts/**

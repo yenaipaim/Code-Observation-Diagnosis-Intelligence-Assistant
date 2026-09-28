@@ -39,17 +39,26 @@ import {
   PanelProvider
 } from "./panelProvider";
 import {
+  createRuntimeCommand,
+  javaCommandTargetsFile,
+  isRuntimeCommandLine,
+  ParsedRuntimeError,
+  resolveRuntimeErrorPath,
+  runtimeProfileForLanguage,
+  runtimeProfileForLanguageId
+} from "./languageRuntime";
+import {
   Classification,
   DiagnosticSnapshot,
+  LANGUAGE_CONCEPT_IDS,
+  LANGUAGE_LABELS,
+  PanelState,
+  SUPPORTED_LANGUAGES,
+  SupportedLanguage,
   isMisconceptionId,
-  MISCONCEPTION_IDS,
-  PanelState
+  languageConceptKey,
+  parseLanguageConceptKey
 } from "./types";
-import {
-  extractPythonScriptPath,
-  isPythonCommandLine,
-  parsePythonRuntimeError
-} from "./runtimeDiagnostics";
 
 const API_KEY_SECRET = "programmingCoach.deepseekApiKey";
 
@@ -85,7 +94,7 @@ class ConfiguredChatCompleter implements JsonCompleter {
 function initialPanelState(demoMode: boolean): PanelState {
   return {
     stage: "empty",
-    message: "等待 Python 报错。",
+    message: "等待 Python、Java 或 JavaScript 报错。",
     attempts: 0,
     hintIndex: 1,
     canRevealAnswer: false,
@@ -270,9 +279,16 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const state = await controller.currentState();
     const currentFile = controller.currentFile();
+    const levelLanguage = state.level?.language;
     const matchesCurrentFile = (editor: vscode.TextEditor): boolean => {
       if (!currentFile) {
-        return editor.document.languageId === "python";
+        const profile = runtimeProfileForLanguageId(
+          editor.document.languageId
+        );
+        return Boolean(
+          profile &&
+            (!levelLanguage || profile.language === levelLanguage)
+        );
       }
       const left = path.resolve(editor.document.uri.fsPath);
       const right = path.resolve(currentFile);
@@ -284,13 +300,12 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.window.visibleTextEditors.find(matchesCurrentFile) ??
       (currentFile
         ? undefined
-        : vscode.window.activeTextEditor?.document.languageId === "python"
+        : vscode.window.activeTextEditor &&
+            matchesCurrentFile(vscode.window.activeTextEditor)
           ? vscode.window.activeTextEditor
           : undefined);
     if (!targetEditor) {
-      await vscode.window.showWarningMessage(
-        "请先打开发生错误的 Python 文件。"
-      );
+      await vscode.window.showWarningMessage("请先打开发生错误的文件。");
       return;
     }
 
@@ -382,8 +397,12 @@ export function activate(context: vscode.ExtensionContext): void {
       clearAll: clearAllLearningData,
       deleteEntry: deleteLearningEntry,
       toggleConcept: async (concept, checked) => {
-        if (isMisconceptionId(concept)) {
-          await controller.setTrackedConcept(concept, checked);
+        const parsed = parseLanguageConceptKey(concept);
+        if (parsed) {
+          await controller.setTrackedConcept(
+            languageConceptKey(parsed.language, parsed.concept),
+            checked
+          );
         }
       }
     }
@@ -431,35 +450,45 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const analyzeRuntimeOutput = async (
     runtimeOutput: string,
-    cwd?: string
+    cwd: string | undefined,
+    language: SupportedLanguage,
+    runningFile?: string
   ): Promise<boolean> => {
-    const parsed = parsePythonRuntimeError(runtimeOutput);
+    const parsed: ParsedRuntimeError | undefined =
+      runtimeProfileForLanguage(language).parseRuntimeError(
+        runtimeOutput
+      );
     if (!parsed) {
       return false;
     }
 
-    const filePath = path.isAbsolute(parsed.file)
-      ? parsed.file
-      : path.resolve(
-          cwd ??
-            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ??
-            process.cwd(),
-          parsed.file
-        );
-    const document = await vscode.workspace.openTextDocument(
-      vscode.Uri.file(filePath)
+    const filePath = resolveRuntimeErrorPath(
+      parsed.file,
+      cwd ??
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+      language,
+      runningFile
     );
+    let document: vscode.TextDocument;
+    try {
+      document = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(filePath)
+      );
+    } catch {
+      return false;
+    }
     const snapshot: DiagnosticSnapshot = {
+      language: parsed.language,
       file: filePath,
       message: parsed.message,
       errorLine: parsed.errorLine,
       code: document.getText(),
       severity: 0,
-      source: "python-runtime"
+      source: `${parsed.language}-runtime`
     };
     const state = await controller.openDiagnostic(snapshot);
     const editor = vscode.window.visibleTextEditors.find(
-      (candidate) => candidate.document.uri.fsPath === filePath
+      (candidate) => sameFile(candidate.document.uri.fsPath, filePath)
     );
     if (editor) {
       decorate(editor, state.level?.errorLine ?? parsed.errorLine);
@@ -467,29 +496,55 @@ export function activate(context: vscode.ExtensionContext): void {
     return true;
   };
 
-  const runPythonFile = async (): Promise<void> => {
+  const runCurrentFile = async (): Promise<void> => {
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== "python") {
-      await vscode.window.showWarningMessage("请先打开一个 Python 文件。");
+    const profile = editor
+      ? runtimeProfileForLanguageId(editor.document.languageId)
+      : undefined;
+    if (!editor || !profile) {
+      await vscode.window.showWarningMessage(
+        "请先打开 Python、Java 或 JavaScript 文件。"
+      );
       return;
     }
 
     await editor.document.save();
-    const configuredInterpreter = vscode.workspace
-      .getConfiguration("python")
-      .get<string>("defaultInterpreterPath");
-    const interpreter = configuredInterpreter || "python";
+    const configuredExecutable =
+      vscode.workspace
+        .getConfiguration(profile.runtimePathSection)
+        .get<string>(profile.runtimePathSetting) ?? "";
+    const executable =
+      configuredExecutable.trim() || profile.defaultExecutable;
     const filePath = editor.document.uri.fsPath;
+    const command = createRuntimeCommand(
+      profile.language,
+      filePath,
+      executable
+    );
     const cwd =
       vscode.workspace.getWorkspaceFolder(editor.document.uri)?.uri.fsPath ??
       path.dirname(filePath);
+    const environment =
+      profile.language === "java"
+        ? {
+            ...process.env,
+            JAVA_TOOL_OPTIONS: [
+              process.env.JAVA_TOOL_OPTIONS,
+              "-Duser.language=en",
+              "-Duser.country=US"
+            ]
+              .filter(Boolean)
+              .join(" ")
+          }
+        : process.env;
     let runtimeOutput = "";
     let completed = false;
 
     await new Promise<void>((resolve) => {
-      const child = spawn(interpreter, [filePath], {
+      const child = spawn(command.executable, command.args, {
         cwd,
-        windowsHide: true
+        windowsHide: true,
+        env: environment
       });
       child.stdout.on("data", (data: Buffer) => {
         runtimeOutput += data.toString();
@@ -502,7 +557,7 @@ export function activate(context: vscode.ExtensionContext): void {
         output.appendLine(`[runtime] ${error.message}`);
         output.show(true);
         await vscode.window.showErrorMessage(
-          `Python 启动失败：${error.message}`
+          `${profile.displayName} 启动失败：${error.message}`
         );
         resolve();
       });
@@ -514,22 +569,30 @@ export function activate(context: vscode.ExtensionContext): void {
         completed = true;
         if (code === 0) {
           clearDecoration(editor);
-          if (controller.currentFile() === filePath) {
+          if (
+            controller.currentFile() &&
+            sameFile(controller.currentFile() ?? "", filePath)
+          ) {
             await controller.markCodeFixed(editor.document.getText());
           }
           await vscode.window.showInformationMessage(
-            "程序运行完成，没有检测到 Python 异常。"
+            `${profile.displayName} 程序运行完成，没有检测到异常。`
           );
           resolve();
           return;
         }
 
-        const analyzed = await analyzeRuntimeOutput(runtimeOutput, cwd);
+        const analyzed = await analyzeRuntimeOutput(
+          runtimeOutput,
+          cwd,
+          profile.language,
+          filePath
+        );
         if (!analyzed) {
           output.appendLine(runtimeOutput);
           output.show(true);
           await vscode.window.showWarningMessage(
-            "程序执行失败，但没有解析到 Python traceback。"
+            `${profile.displayName} 程序执行失败，但没有解析到可识别的错误。`
           );
         }
         resolve();
@@ -543,6 +606,7 @@ export function activate(context: vscode.ExtensionContext): void {
       runtimeOutput: string;
       commandLine: string;
       cwd?: string;
+      language: SupportedLanguage;
       readDone: Promise<void>;
     }
   >();
@@ -580,7 +644,11 @@ export function activate(context: vscode.ExtensionContext): void {
       { webviewOptions: { retainContextWhenHidden: true } }
     ),
     vscode.languages.registerCodeLensProvider(
-      { language: "python", scheme: "file" },
+      [
+        { language: "python", scheme: "file" },
+        { language: "java", scheme: "file" },
+        { language: "javascript", scheme: "file" }
+      ],
       {
         onDidChangeCodeLenses: codeLensChanged.event,
         provideCodeLenses: (document) => {
@@ -691,8 +759,12 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.commands.executeCommand("programmingCoach.panel.focus");
     }),
     vscode.commands.registerCommand(
+      "programmingCoach.runCurrentFile",
+      runCurrentFile
+    ),
+    vscode.commands.registerCommand(
       "programmingCoach.runPythonFile",
-      runPythonFile
+      runCurrentFile
     ),
     vscode.commands.registerCommand(
       "programmingCoach.openLearningLog",
@@ -719,7 +791,12 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.window.onDidStartTerminalShellExecution((event) => {
       const commandLine = event.execution.commandLine.value;
-      if (!isPythonCommandLine(commandLine)) {
+      const profile = SUPPORTED_LANGUAGES.map(
+        runtimeProfileForLanguage
+      ).find((candidate) =>
+        isRuntimeCommandLine(commandLine, candidate.language)
+      );
+      if (!profile) {
         return;
       }
 
@@ -731,6 +808,7 @@ export function activate(context: vscode.ExtensionContext): void {
         runtimeOutput: "",
         commandLine,
         cwd: event.execution.cwd?.fsPath,
+        language: profile.language,
         readDone
       });
 
@@ -756,9 +834,27 @@ export function activate(context: vscode.ExtensionContext): void {
       terminalRuns.delete(event.execution);
       await run.readDone;
 
+      const profile = runtimeProfileForLanguage(run.language);
+      const scriptPath = profile.extractScriptPath(run.commandLine);
+      let runningFile = scriptPath
+        ? resolveTerminalFile(scriptPath, run.cwd)
+        : undefined;
+      if (
+        !runningFile &&
+        run.language === "java" &&
+        controller.currentFile() &&
+        javaCommandTargetsFile(
+          run.commandLine,
+          controller.currentFile() ?? ""
+        )
+      ) {
+        runningFile = controller.currentFile();
+      }
       const analyzed = await analyzeRuntimeOutput(
         run.runtimeOutput,
-        run.cwd
+        run.cwd,
+        run.language,
+        runningFile
       );
       if (analyzed) {
         return;
@@ -767,11 +863,10 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      const scriptPath = extractPythonScriptPath(run.commandLine);
-      if (!scriptPath) {
+      if (!runningFile) {
         return;
       }
-      const filePath = resolveTerminalFile(scriptPath, run.cwd);
+      const filePath = runningFile;
       if (
         !controller.currentFile() ||
         !sameFile(controller.currentFile() ?? "", filePath)
@@ -781,8 +876,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
       const editor = vscode.window.visibleTextEditors.find(
         (candidate) =>
-          candidate.document.uri.fsPath.toLowerCase() ===
-          filePath.toLowerCase()
+          sameFile(candidate.document.uri.fsPath, filePath)
       );
       if (editor) {
         clearDecoration(editor);
@@ -811,14 +905,16 @@ async function classifyWithChatApi(
     return demoClassify(snapshot);
   }
 
+  const language = snapshot.language ?? "python";
+  const conceptIds = LANGUAGE_CONCEPT_IDS[language];
   try {
     const result = await completer.completeJson<{
       concept_id?: string;
       confidence?: number;
     }>(
       [
-        "将 Python 初学者报错归类为以下之一：",
-        MISCONCEPTION_IDS.join("、"),
+        `将 ${LANGUAGE_LABELS[language]} 初学者报错归类为以下之一：`,
+        conceptIds.join("、"),
         "无法判断时 concept_id 返回 null。",
         "只输出 JSON：{\"concept_id\":\"...\",\"confidence\":0.0}"
       ].join("\n"),
@@ -830,7 +926,10 @@ async function classifyWithChatApi(
       ].join("\n")
     );
 
-    if (isMisconceptionId(result.concept_id)) {
+    if (
+      isMisconceptionId(result.concept_id) &&
+      conceptIds.includes(result.concept_id)
+    ) {
       return {
         concept: result.concept_id,
         confidence:

@@ -3,11 +3,18 @@ import path from "node:path";
 import {
   clampConfidence,
   Judgment,
+  LanguageConceptKey,
   LearnerConceptState,
   LearnerModel,
+  LANGUAGE_CONCEPT_IDS,
   MISCONCEPTION_IDS,
   MisconceptionId,
-  isMisconceptionId
+  SUPPORTED_LANGUAGES,
+  SupportedLanguage,
+  isMisconceptionId,
+  isSupportedLanguage,
+  languageConceptKey,
+  parseLanguageConceptKey
 } from "./types";
 
 export interface ConfidenceInput {
@@ -20,6 +27,7 @@ export interface ConfidenceInput {
 }
 
 export interface OutcomeInput {
+  language?: SupportedLanguage;
   concept: MisconceptionId;
   judgment?: Judgment;
   fixed: boolean;
@@ -43,7 +51,7 @@ export function emptyLearnerModel(userId = "local"): LearnerModel {
 
 export function setConceptTracked(
   model: LearnerModel,
-  concept: MisconceptionId,
+  concept: LanguageConceptKey,
   tracked: boolean
 ): void {
   const selected = new Set(model.trackedConcepts);
@@ -52,9 +60,7 @@ export function setConceptTracked(
   } else {
     selected.delete(concept);
   }
-  model.trackedConcepts = MISCONCEPTION_IDS.filter((id) =>
-    selected.has(id)
-  );
+  model.trackedConcepts = sortLanguageConceptKeys(selected);
 }
 
 export function challengeRepeatCount(
@@ -109,15 +115,16 @@ export function confidenceDeltaFor(input: ConfidenceInput): number {
 
 export function applyConfidenceUpdate(
   model: LearnerModel,
-  concept: MisconceptionId,
+  concept: MisconceptionId | LanguageConceptKey,
   delta: number,
   now = new Date().toISOString()
 ): LearnerConceptState {
+  const key = normalizeLanguageConceptKey(concept);
   const current =
-    model.concepts[concept] ?? emptyConceptState(now);
+    model.concepts[key] ?? emptyConceptState(now);
   current.confidence = clampConfidence(current.confidence + delta);
   current.last_seen = now.slice(0, 10);
-  model.concepts[concept] = current;
+  model.concepts[key] = current;
   return current;
 }
 
@@ -126,8 +133,12 @@ export function recordOutcome(
   input: OutcomeInput
 ): LearnerConceptState {
   const now = input.now ?? new Date().toISOString();
+  const key = languageConceptKey(
+    input.language ?? "python",
+    input.concept
+  );
   const current =
-    model.concepts[input.concept] ?? emptyConceptState(now);
+    model.concepts[key] ?? emptyConceptState(now);
 
   current.attempts += 1;
   if (!input.fixed || input.judgment === "wrong" || input.viewedAnswer) {
@@ -159,7 +170,7 @@ export function recordOutcome(
   current.consecutive_answers = input.viewedAnswer
     ? current.consecutive_answers + 1
     : 0;
-  model.concepts[input.concept] = current;
+  model.concepts[key] = current;
   return current;
 }
 
@@ -169,15 +180,7 @@ export class LearnerModelStore {
   async load(): Promise<LearnerModel> {
     try {
       const content = await fs.readFile(this.filePath, "utf8");
-      const parsed = JSON.parse(content) as Partial<LearnerModel>;
-      return {
-        user_id: parsed.user_id ?? "local",
-        concepts: parsed.concepts ?? {},
-        challenges: parsed.challenges ?? {},
-        trackedConcepts: Array.isArray(parsed.trackedConcepts)
-          ? parsed.trackedConcepts.filter(isMisconceptionId)
-          : []
-      };
+      return normalizeLearnerModel(JSON.parse(content));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return emptyLearnerModel();
@@ -194,4 +197,94 @@ export class LearnerModelStore {
       "utf8"
     );
   }
+}
+
+function sortLanguageConceptKeys(
+  keys: Iterable<LanguageConceptKey>
+): LanguageConceptKey[] {
+  const selected = new Set(keys);
+  const sorted: LanguageConceptKey[] = [];
+  for (const language of SUPPORTED_LANGUAGES) {
+    for (const concept of LANGUAGE_CONCEPT_IDS[language]) {
+      const key = languageConceptKey(language, concept);
+      if (selected.has(key)) {
+        sorted.push(key);
+      }
+    }
+  }
+  return sorted;
+}
+
+function normalizeLanguageConceptKey(
+  value: MisconceptionId | LanguageConceptKey
+): LanguageConceptKey {
+  if (isMisconceptionId(value)) {
+    return languageConceptKey("python", value);
+  }
+
+  const parsed = parseLanguageConceptKey(value);
+  if (!parsed) {
+    throw new Error(`Invalid language concept key: ${value}`);
+  }
+  return languageConceptKey(parsed.language, parsed.concept);
+}
+
+export function normalizeLearnerModel(value: unknown): LearnerModel {
+  const parsed =
+    value && typeof value === "object"
+      ? (value as {
+          user_id?: unknown;
+          concepts?: unknown;
+          challenges?: unknown;
+          trackedConcepts?: unknown;
+        })
+      : {};
+  const concepts: LearnerModel["concepts"] = {};
+  const legacyConcepts: LearnerModel["concepts"] = {};
+
+  if (parsed.concepts && typeof parsed.concepts === "object") {
+    for (const [rawKey, rawState] of Object.entries(parsed.concepts)) {
+      if (!rawState || typeof rawState !== "object") {
+        continue;
+      }
+      if (isMisconceptionId(rawKey)) {
+        legacyConcepts[languageConceptKey("python", rawKey)] =
+          rawState as LearnerConceptState;
+        continue;
+      }
+      const parsedKey = parseLanguageConceptKey(rawKey);
+      if (parsedKey) {
+        concepts[
+          languageConceptKey(parsedKey.language, parsedKey.concept)
+        ] = rawState as LearnerConceptState;
+      }
+    }
+  }
+
+  const tracked = new Set<LanguageConceptKey>();
+  if (Array.isArray(parsed.trackedConcepts)) {
+    for (const value of parsed.trackedConcepts) {
+      if (isMisconceptionId(value)) {
+        tracked.add(languageConceptKey("python", value));
+        continue;
+      }
+      const parsedKey = parseLanguageConceptKey(value);
+      if (parsedKey) {
+        tracked.add(
+          languageConceptKey(parsedKey.language, parsedKey.concept)
+        );
+      }
+    }
+  }
+
+  return {
+    user_id:
+      typeof parsed.user_id === "string" ? parsed.user_id : "local",
+    concepts: { ...legacyConcepts, ...concepts },
+    challenges:
+      parsed.challenges && typeof parsed.challenges === "object"
+        ? (parsed.challenges as LearnerModel["challenges"])
+        : {},
+    trackedConcepts: sortLanguageConceptKeys(tracked)
+  };
 }

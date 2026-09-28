@@ -155,6 +155,30 @@ test("answer generation trims a full-code response down to the requested range",
   assert.equal(answer.endLine, 2);
 });
 
+test("answer generation strips language-tagged code fences", async () => {
+  const generator = new HintGenerator({
+    completeJson: async <T>() =>
+      ({
+        code: "```java\nint count = 0;\n```",
+        explanation: "先初始化对象。",
+        startLine: 3,
+        endLine: 3
+      }) as T
+  });
+
+  const answer = await generator.generateAnswer(
+    {
+      language: "java",
+      message: "java.lang.NullPointerException",
+      errorLine: 3,
+      code: "count.trim();"
+    },
+    "null_reference"
+  );
+
+  assert.equal(answer.code, "int count = 0;");
+});
+
 test("hint generation rejects an answer-shaped code block", async () => {
   const generator = new HintGenerator({
     completeJson: async <T>() =>
@@ -198,4 +222,52 @@ test("understanding judgment includes the diagnostic context", async () => {
 
   assert.match(userPrompt, /IndexError/);
   assert.match(userPrompt, /range\(len\(nums\) \+ 1\)/);
+});
+
+test("hint prompts identify the target language", async () => {
+  let systemPrompt = "";
+  let userPrompt = "";
+  const generator = new HintGenerator({
+    completeJson: async <T>(system: string, user: string) => {
+      systemPrompt = system;
+      userPrompt = user;
+      return { hint: "先确认对象是否可能为空。" } as T;
+    }
+  });
+
+  await generator.generateHint(
+    {
+      language: "java",
+      message: "java.lang.NullPointerException",
+      errorLine: 3,
+      code: "value.trim();"
+    },
+    "null_reference",
+    1
+  );
+
+  assert.match(systemPrompt, /Java/);
+  assert.match(userPrompt, /Java/);
+});
+
+test("understanding judgment identifies the target language", async () => {
+  let systemPrompt = "";
+  await judgeUnderstanding(
+    "null_reference",
+    "使用前需要判空",
+    {
+      completeJson: async <T>(system: string) => {
+        systemPrompt = system;
+        return { judgment: "correct", reason: "ok" } as T;
+      }
+    },
+    {
+      language: "javascript",
+      message: "TypeError: Cannot read properties of null",
+      errorLine: 2,
+      code: "value.name"
+    }
+  );
+
+  assert.match(systemPrompt, /JavaScript/);
 });

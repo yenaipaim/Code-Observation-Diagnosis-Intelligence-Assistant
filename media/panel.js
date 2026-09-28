@@ -10,7 +10,24 @@
   const conceptLabels = {
     off_by_one: "差一错误",
     return_vs_print: "返回值 vs 打印",
-    type_mismatch: "类型混淆"
+    type_mismatch: "类型混淆",
+    name_error: "未定义名称",
+    syntax_error: "语法错误",
+    key_error: "字典键错误",
+    value_error: "值转换错误",
+    zero_division: "除零错误",
+    attribute_error: "属性错误",
+    import_error: "导入错误",
+    indentation_error: "缩进错误",
+    null_reference: "空引用",
+    index_out_of_bounds: "越界访问",
+    class_cast_error: "类型转换错误",
+    async_error: "异步错误"
+  };
+  const languageLabels = {
+    python: "Python",
+    java: "Java",
+    javascript: "JavaScript"
   };
 
   const icons = {
@@ -140,14 +157,17 @@
     app.append(
       topLine(
         state.level
-          ? "当前关卡：" + state.conceptLabel
+          ? "当前关卡：" +
+              (state.languageLabel || "") +
+              (state.languageLabel ? " · " : "") +
+              state.conceptLabel
           : "调试教练",
         complete ? "success" : error ? "error" : ""
       )
     );
 
     if (state.stage === "empty") {
-      app.append(element("div", "empty", "运行 Python 代码，出现报错后这里会开始引导。"));
+      app.append(element("div", "empty", "运行 Python、Java 或 JavaScript 代码，出现报错后这里会开始引导。"));
       return;
     }
 
@@ -330,39 +350,64 @@
 
     const progressSection = element("section", "section");
     progressSection.append(element("div", "eyebrow", "掌握度"));
-    const picker = element("div", "concept-picker");
-    conceptOptions.forEach(function (item) {
-      const option = element("label", "concept-option");
-      const checkbox = element("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = item.selected;
-      checkbox.addEventListener("change", function () {
-        vscode.postMessage({
-          type: "toggle-concept",
-          concept: item.concept,
-          checked: checkbox.checked
-        });
-      });
-      option.append(checkbox, document.createTextNode(item.label));
-      picker.append(option);
-    });
-    progressSection.append(picker);
     if (!progress.length) {
       progressSection.append(
         element("p", "message", "默认不统计。请选择错误类型，或由运行报错自动勾选。")
       );
     }
-    progress.forEach(function (item) {
-      const wrap = element("div", "progress-item");
-      const head = element("div", "progress-head");
-      head.append(element("span", "", item.label));
-      head.append(element("span", "log-time", Math.round(item.confidence * 100) + "% · " + item.status));
-      const track = element("div", "progress-track");
-      const value = element("div", "progress-value");
-      value.style.width = Math.round(item.confidence * 100) + "%";
-      track.append(value);
-      wrap.append(head, track);
-      progressSection.append(wrap);
+    Object.keys(languageLabels).forEach(function (language) {
+      const options = conceptOptions.filter(function (item) {
+        return item.language === language;
+      });
+      if (!options.length) {
+        return;
+      }
+
+      const group = element("div", "language-group");
+      group.append(
+        element("div", "language-heading", languageLabels[language])
+      );
+      const picker = element("div", "concept-picker");
+      options.forEach(function (item) {
+        const option = element("label", "concept-option");
+        const checkbox = element("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = item.selected;
+        checkbox.addEventListener("change", function () {
+          vscode.postMessage({
+            type: "toggle-concept",
+            concept: item.key,
+            checked: checkbox.checked
+          });
+        });
+        option.append(checkbox, document.createTextNode(item.label));
+        picker.append(option);
+      });
+      group.append(picker);
+
+      progress
+        .filter(function (item) {
+          return item.language === language;
+        })
+        .forEach(function (item) {
+          const wrap = element("div", "progress-item");
+          const head = element("div", "progress-head");
+          head.append(element("span", "", item.label));
+          head.append(
+            element(
+              "span",
+              "log-time",
+              Math.round(item.confidence * 100) + "% · " + item.status
+            )
+          );
+          const track = element("div", "progress-track");
+          const value = element("div", "progress-value");
+          value.style.width = Math.round(item.confidence * 100) + "%";
+          track.append(value);
+          wrap.append(head, track);
+          group.append(wrap);
+        });
+      progressSection.append(group);
     });
     app.append(progressSection);
 
@@ -379,6 +424,13 @@
       const item = element("li", "log-item");
       item.dataset.entryId = entry.id;
       const head = element("div", "log-head");
+      head.append(
+        element(
+          "span",
+          "language-badge",
+          languageLabels[entry.language || "python"] || entry.language
+        )
+      );
       head.append(element("span", "log-title", entry.fileName));
       const time = new Date(entry.timestamp);
       const side = element("div", "log-side");

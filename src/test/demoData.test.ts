@@ -8,6 +8,7 @@ import {
 } from "../demoData";
 import {
   DiagnosticSnapshot,
+  LANGUAGE_CONCEPT_IDS,
   MISCONCEPTION_IDS,
   MisconceptionId
 } from "../types";
@@ -24,7 +25,11 @@ function sampleContext(concept: MisconceptionId): DiagnosticSnapshot {
     zero_division: "ZeroDivisionError: division by zero",
     attribute_error: "AttributeError: 'str' object has no attribute 'push'",
     import_error: "ModuleNotFoundError: No module named 'requests'",
-    indentation_error: "IndentationError: expected an indented block"
+    indentation_error: "IndentationError: expected an indented block",
+    null_reference: "TypeError: Cannot read properties of null",
+    index_out_of_bounds: "IndexError: list index out of range",
+    class_cast_error: "ClassCastException: class A cannot be cast to class B",
+    async_error: "UnhandledPromiseRejection: Error: failed"
   };
 
   return {
@@ -91,4 +96,84 @@ test("demo hint uses the code feature in its cached variant", () => {
   });
 
   assert.match(hint, /while/);
+});
+
+test("demo answers use the target language syntax", () => {
+  const javaAnswer = demoAnswer("null_reference", {
+    language: "java",
+    message: "java.lang.NullPointerException",
+    errorLine: 1,
+    code: "value.trim();"
+  });
+  const javaScriptAnswer = demoAnswer("null_reference", {
+    language: "javascript",
+    message: "TypeError: Cannot read properties of null",
+    errorLine: 1,
+    code: "value.trim();"
+  });
+
+  assert.match(javaAnswer.code, /!= null|instanceof/);
+  assert.match(javaScriptAnswer.code, /\?\./);
+});
+
+test("demo answers avoid Python-only syntax for Java and JavaScript", () => {
+  for (const concept of LANGUAGE_CONCEPT_IDS.java) {
+    const answer = demoAnswer(concept, {
+      ...sampleContext(concept),
+      language: "java"
+    });
+    assert.doesNotMatch(
+      answer.code,
+      /\brange\(|\blen\(|\bprint\(|\bstr\(|\bNone\b|dict\.get|#/
+    );
+  }
+
+  for (const concept of LANGUAGE_CONCEPT_IDS.javascript) {
+    const answer = demoAnswer(concept, {
+      ...sampleContext(concept),
+      language: "javascript"
+    });
+    assert.doesNotMatch(
+      answer.code,
+      /\brange\(|\blen\(|\bprint\(|\bstr\(|\bNone\b|dict\.get|#/
+    );
+  }
+});
+
+test("demo hints avoid Python-only wording for Java and JavaScript", () => {
+  for (const language of ["java", "javascript"] as const) {
+    for (const concept of LANGUAGE_CONCEPT_IDS[language]) {
+      for (const hintIndex of [1, 2, 3] as const) {
+        const hint = demoHint(concept, hintIndex, {
+          ...sampleContext(concept),
+          language
+        });
+        assert.doesNotMatch(
+          hint,
+          /Python|range\(|str\(\)|int\(\)|ValueError|dict\.get|type\(value\)/
+        );
+      }
+    }
+  }
+});
+
+test("demo classification respects the diagnostic language", () => {
+  assert.equal(
+    demoClassify({
+      language: "javascript",
+      message: "UnhandledPromiseRejection: Error: failed",
+      errorLine: 1,
+      code: "task();"
+    })?.concept,
+    "async_error"
+  );
+  assert.equal(
+    demoClassify({
+      language: "java",
+      message: "java.lang.ClassCastException: A cannot be cast to B",
+      errorLine: 1,
+      code: "B value = (B) item;"
+    })?.concept,
+    "class_cast_error"
+  );
 });

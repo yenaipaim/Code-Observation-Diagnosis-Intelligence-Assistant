@@ -2,7 +2,8 @@ import {
   CurrentLevel,
   HintIndex,
   Judgment,
-  MisconceptionId
+  MisconceptionId,
+  SupportedLanguage
 } from "./types";
 
 function nextHint(hintIndex: HintIndex): HintIndex {
@@ -23,9 +24,11 @@ export class CoachStateMachine {
       key?: string;
       repeatCount?: number;
       scoreMultiplier?: number;
-    } = {}
+    } = {},
+    language: SupportedLanguage = "python"
   ): CoachStateMachine {
     return new CoachStateMachine({
+      language,
       concept,
       file,
       errorLine,

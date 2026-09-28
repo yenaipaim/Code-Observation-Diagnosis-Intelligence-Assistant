@@ -9,10 +9,23 @@ export const MISCONCEPTION_IDS = [
   "zero_division",
   "attribute_error",
   "import_error",
-  "indentation_error"
+  "indentation_error",
+  "null_reference",
+  "index_out_of_bounds",
+  "class_cast_error",
+  "async_error"
 ] as const;
 
+export const SUPPORTED_LANGUAGES = [
+  "python",
+  "java",
+  "javascript"
+] as const;
+
+export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 export type MisconceptionId = (typeof MISCONCEPTION_IDS)[number];
+export type LanguageConceptKey =
+  `${SupportedLanguage}:${MisconceptionId}`;
 export type HintIndex = 1 | 2 | 3;
 export type Judgment = "correct" | "partial" | "wrong";
 export type ResolutionKind =
@@ -34,6 +47,7 @@ export interface DiagnosticSnapshot {
   message: string;
   errorLine: number;
   code: string;
+  language?: SupportedLanguage;
   file?: string;
   severity?: number;
   source?: string;
@@ -53,6 +67,7 @@ export interface LevelFingerprint {
 }
 
 export interface CurrentLevel extends LevelFingerprint {
+  language: SupportedLanguage;
   challengeKey: string;
   repeatCount: number;
   scoreMultiplier: number;
@@ -74,17 +89,18 @@ export interface LearnerConceptState {
 
 export interface LearnerModel {
   user_id: string;
-  concepts: Partial<Record<MisconceptionId, LearnerConceptState>>;
+  concepts: Partial<Record<LanguageConceptKey, LearnerConceptState>>;
   challenges: Partial<
     Record<string, { completions: number; last_seen: string }>
   >;
-  trackedConcepts: MisconceptionId[];
+  trackedConcepts: LanguageConceptKey[];
 }
 
 export interface LearningLogEntry {
   id: string;
   timestamp: string;
   fileName: string;
+  language?: SupportedLanguage;
   concept: MisconceptionId;
   resolution: ResolutionKind;
   understandingSummary: string;
@@ -116,6 +132,8 @@ export interface DuplicateErrorReference {
 
 export interface PanelState {
   stage: PanelStage;
+  language?: SupportedLanguage;
+  languageLabel?: string;
   level?: CurrentLevel;
   conceptLabel?: string;
   message: string;
@@ -151,7 +169,60 @@ export const CONCEPT_LABELS: Record<MisconceptionId, string> = {
   zero_division: "除零错误",
   attribute_error: "属性错误",
   import_error: "导入错误",
-  indentation_error: "缩进错误"
+  indentation_error: "缩进错误",
+  null_reference: "空引用",
+  index_out_of_bounds: "越界访问",
+  class_cast_error: "类型转换错误",
+  async_error: "异步错误"
+};
+
+export const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
+  python: "Python",
+  java: "Java",
+  javascript: "JavaScript"
+};
+
+export const LANGUAGE_CONCEPT_IDS: Record<
+  SupportedLanguage,
+  readonly MisconceptionId[]
+> = {
+  python: [
+    "off_by_one",
+    "return_vs_print",
+    "type_mismatch",
+    "name_error",
+    "syntax_error",
+    "key_error",
+    "value_error",
+    "zero_division",
+    "attribute_error",
+    "import_error",
+    "indentation_error"
+  ],
+  java: [
+    "off_by_one",
+    "type_mismatch",
+    "name_error",
+    "syntax_error",
+    "value_error",
+    "zero_division",
+    "import_error",
+    "null_reference",
+    "index_out_of_bounds",
+    "class_cast_error"
+  ],
+  javascript: [
+    "off_by_one",
+    "type_mismatch",
+    "name_error",
+    "syntax_error",
+    "value_error",
+    "attribute_error",
+    "import_error",
+    "null_reference",
+    "index_out_of_bounds",
+    "async_error"
+  ]
 };
 
 export function clampConfidence(value: number): number {
@@ -163,6 +234,47 @@ export function isMisconceptionId(value: unknown): value is MisconceptionId {
     typeof value === "string" &&
     (MISCONCEPTION_IDS as readonly string[]).includes(value)
   );
+}
+
+export function isSupportedLanguage(
+  value: unknown
+): value is SupportedLanguage {
+  return (
+    typeof value === "string" &&
+    (SUPPORTED_LANGUAGES as readonly string[]).includes(value)
+  );
+}
+
+export function languageConceptKey(
+  language: SupportedLanguage,
+  concept: MisconceptionId
+): LanguageConceptKey {
+  return `${language}:${concept}`;
+}
+
+export function parseLanguageConceptKey(
+  value: unknown
+): { language: SupportedLanguage; concept: MisconceptionId } | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const separator = value.indexOf(":");
+  if (separator < 0) {
+    return undefined;
+  }
+
+  const language = value.slice(0, separator);
+  const concept = value.slice(separator + 1);
+  if (!isSupportedLanguage(language) || !isMisconceptionId(concept)) {
+    return undefined;
+  }
+
+  if (!LANGUAGE_CONCEPT_IDS[language].includes(concept)) {
+    return undefined;
+  }
+
+  return { language, concept };
 }
 
 export function sameLevel(

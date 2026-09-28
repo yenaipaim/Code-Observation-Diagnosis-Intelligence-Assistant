@@ -14,7 +14,7 @@ test("runtime analysis does not steal editor focus", async () => {
   const source = await extensionSource();
   const runtimeAnalyzer = source.slice(
     source.indexOf("const analyzeRuntimeOutput"),
-    source.indexOf("const runPythonFile")
+    source.indexOf("const runCurrentFile")
   );
 
   assert.doesNotMatch(
@@ -60,15 +60,17 @@ test("a successful terminal Python run marks the code as fixed", async () => {
   assert.match(terminalEndHandler, /markCodeFixed/);
 });
 
-test("a successful explicit Python run marks the code as fixed", async () => {
+test("a successful explicit language run marks the code as fixed", async () => {
   const source = await extensionSource();
-  const runPythonFile = source.slice(
-    source.indexOf("const runPythonFile"),
+  const runCurrentFile = source.slice(
+    source.indexOf("const runCurrentFile"),
     source.indexOf("context.subscriptions.push")
   );
 
-  assert.match(runPythonFile, /code === 0/);
-  assert.match(runPythonFile, /markCodeFixed/);
+  assert.match(runCurrentFile, /code === 0/);
+  assert.match(runCurrentFile, /markCodeFixed/);
+  assert.match(runCurrentFile, /createRuntimeCommand/);
+  assert.match(runCurrentFile, /JAVA_TOOL_OPTIONS/);
 });
 
 test("viewing the answer requires confirmation", async () => {
@@ -93,4 +95,14 @@ test("applying an answer replaces only the requested line range", async () => {
   assert.match(applyFix, /endLine/);
   assert.match(applyFix, /new vscode\.Range/);
   assert.doesNotMatch(applyFix, /selection/);
+});
+
+test("terminal and CodeLens wiring support every runtime profile", async () => {
+  const source = await extensionSource();
+
+  assert.match(source, /runtimeProfileForLanguageId/);
+  assert.match(source, /isRuntimeCommandLine/);
+  assert.match(source, /javaCommandTargetsFile/);
+  assert.match(source, /language: "java"/);
+  assert.match(source, /language: "javascript"/);
 });

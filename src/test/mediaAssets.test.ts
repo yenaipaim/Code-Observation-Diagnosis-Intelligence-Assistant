@@ -55,3 +55,28 @@ test("duplicate errors expose timeline and forced-new-error actions", async () =
   assert.match(script, /open-log-entry/);
   assert.match(script, /treat-as-new/);
 });
+
+test("learning log groups concepts by language and tags entries", async () => {
+  const script = await media("panel.js");
+  const css = await media("panel.css");
+
+  assert.match(script, /language-group/);
+  assert.match(script, /item\.key/);
+  assert.match(script, /entry\.language/);
+  assert.match(script, /state\.languageLabel/);
+  assert.match(css, /\.language-badge/);
+});
+
+test("the manifest does not activate HTML", async () => {
+  const manifest = JSON.parse(
+    await readFile(
+      path.resolve(__dirname, "..", "..", "package.json"),
+      "utf8"
+    )
+  ) as { activationEvents?: string[] };
+
+  assert.equal(
+    manifest.activationEvents?.includes("onLanguage:html"),
+    false
+  );
+});

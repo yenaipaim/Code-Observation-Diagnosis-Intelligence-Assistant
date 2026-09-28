@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
   appendLearningLog,
@@ -7,8 +10,10 @@ import {
   createLearningLogEntry,
   deleteLearningLogEntry,
   findDuplicateLearningLogEntry,
+  LearningLogStore,
   scoreMultiplierForRepeat,
   sortTimeline,
+  summarizeConceptOptions,
   summarizeProgress
 } from "../learningLog";
 import { emptyLearnerModel, recordOutcome } from "../learnerModel";
@@ -105,7 +110,7 @@ test("duplicate matching requires the same location and code window", () => {
 
 test("progress summary exposes mastery and review labels", () => {
   const model = emptyLearnerModel("local");
-  model.trackedConcepts = ["off_by_one"];
+  model.trackedConcepts = ["python:off_by_one"];
   recordOutcome(model, {
     concept: "off_by_one",
     fixed: true,
@@ -130,7 +135,7 @@ test("mastery is empty until a concept is selected", () => {
   });
 
   assert.deepEqual(summarizeProgress(model), []);
-  model.trackedConcepts = ["off_by_one"];
+  model.trackedConcepts = ["python:off_by_one"];
   assert.equal(summarizeProgress(model).length, 1);
 });
 
@@ -185,4 +190,85 @@ test("repeat multipliers halve after each completion", () => {
   assert.equal(scoreMultiplierForRepeat(0), 1);
   assert.equal(scoreMultiplierForRepeat(1), 0.5);
   assert.equal(scoreMultiplierForRepeat(2), 0.25);
+});
+
+test("learning entries preserve their language", () => {
+  const item = createLearningLogEntry({
+    language: "javascript",
+    fileName: "app.js",
+    concept: "async_error",
+    resolution: "after_hint",
+    understandingSummary: "未处理 Promise rejection",
+    confidenceDelta: 0.05,
+    hintIndex: 1,
+    attempts: 2
+  });
+
+  assert.equal(item.language, "javascript");
+});
+
+test("learning log store migrates legacy entries to Python", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "coach-log-"));
+  const filePath = path.join(directory, "log.json");
+  try {
+    await writeFile(
+      filePath,
+      JSON.stringify([
+        {
+          id: "legacy",
+          timestamp: "2026-09-23T10:00:00.000Z",
+          fileName: "main.py",
+          concept: "off_by_one",
+          resolution: "independent",
+          understandingSummary: "完成",
+          confidenceDelta: 0.15,
+          hintIndex: 1,
+          attempts: 1
+        }
+      ]),
+      "utf8"
+    );
+
+    const entries = await new LearningLogStore(filePath).load();
+    assert.equal(entries[0].language, "python");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("progress and options are grouped by language keys", () => {
+  const model = emptyLearnerModel("local");
+  model.trackedConcepts = [
+    "python:off_by_one",
+    "java:null_reference",
+    "javascript:async_error"
+  ];
+  model.concepts["java:null_reference"] = {
+    attempts: 1,
+    failures: 0,
+    last_seen: "2026-09-28",
+    confidence: 0.8,
+    consecutive_skips: 0,
+    consecutive_answers: 0
+  };
+
+  const progress = summarizeProgress(model);
+  const options = summarizeConceptOptions(model);
+
+  assert.deepEqual(
+    progress.map((item) => [item.language, item.concept, item.status]),
+    [
+      ["python", "off_by_one", "学习推进中"],
+      ["java", "null_reference", "已掌握"],
+      ["javascript", "async_error", "学习推进中"]
+    ]
+  );
+  assert.ok(
+    options.some(
+      (item) =>
+        item.key === "java:null_reference" &&
+        item.language === "java" &&
+        item.selected
+    )
+  );
 });

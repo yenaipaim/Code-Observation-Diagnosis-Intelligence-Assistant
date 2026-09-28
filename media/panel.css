@@ -325,6 +325,27 @@ textarea:focus {
   margin: 0 0 12px;
 }
 
+.language-group {
+  margin-bottom: 14px;
+}
+
+.language-heading {
+  margin-bottom: 7px;
+  color: var(--coach-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.language-badge {
+  flex: 0 0 auto;
+  border: 1px solid var(--coach-border);
+  border-radius: 9px;
+  padding: 1px 6px;
+  color: var(--coach-accent);
+  font-size: 10px;
+  font-weight: 650;
+}
+
 .concept-picker {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
