@@ -32,6 +32,8 @@ interface HintResponse {
 interface AnswerResponse {
   code?: string;
   explanation?: string;
+  startLine?: number | string;
+  endLine?: number | string;
 }
 
 interface JudgmentResponse {
@@ -121,10 +123,59 @@ function assertSafeHint(hint: string): void {
 }
 
 function normalizeAnswerCode(code: string): string {
-  const fenced = code.trim().match(
-    /^```(?:python|py)?\s*\n?([\s\S]*?)\n?```$/i
+  const normalized = code.replace(/\r\n?/g, "\n");
+  const fenced = normalized.trim().match(
+    /^```(?:python|py)?[ \t]*\n?([\s\S]*?)\n?```$/i
   );
-  return (fenced?.[1] ?? code).trim();
+  const content = fenced?.[1] ?? normalized;
+  return content.replace(/^\n/, "").replace(/\n[ \t]*$/, "");
+}
+
+function lineCount(code: string): number {
+  return Math.max(1, code.replace(/\r\n?/g, "\n").split("\n").length);
+}
+
+function lineNumber(
+  value: number | string | undefined,
+  fallback: number,
+  totalLines: number
+): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : Number.NaN;
+  const candidate = Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+  return Math.min(Math.max(candidate, 1), totalLines);
+}
+
+function selectAnswerSnippet(
+  code: string,
+  source: string,
+  startLine: number,
+  endLine: number
+): string {
+  const answerLines = code.replace(/\r\n?/g, "\n").split("\n");
+  const sourceLines = source.replace(/\r\n?/g, "\n").split("\n");
+  const replacementLength = endLine - startLine + 1;
+
+  if (
+    answerLines.length > replacementLength &&
+    answerLines.length === sourceLines.length
+  ) {
+    return answerLines.slice(startLine - 1, endLine).join("\n");
+  }
+
+  return code;
+}
+
+function numberedCode(code: string): string {
+  return code
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line, index) => `${index + 1}: ${line}`)
+    .join("\n");
 }
 
 export class HintGenerator {
@@ -198,17 +249,20 @@ export class HintGenerator {
     const response = await this.client.completeJson<AnswerResponse>(
       [
         "用户已经尝试并主动点击了“看答案”。",
-        "先给出完整、可以直接运行的正确代码，再解释核心原因。",
-        "code 字段必须是完整代码，不包含 Markdown 代码围栏。",
+        "只给出当前错误需要修改的最小代码片段，不要返回完整文件、完整函数、完整循环或其他未修改代码。",
+        "code 字段必须只包含 startLine 到 endLine 的替换内容，保持原有缩进，不包含 Markdown 代码围栏。",
+        "startLine 和 endLine 必须使用当前完整代码的 1-based 行号，包含结束行。",
+        "如果错误只涉及一行，startLine 和 endLine 相同；如果跨多行，只返回这些需要替换的行。",
+        "explanation 单独解释核心原因，不要在解释里混入完整代码。",
         "不要修改用户文件，只输出教学结果。",
-        "输出 JSON：{\"code\":\"...\",\"explanation\":\"...\"}"
+        "输出 JSON：{\"code\":\"...\",\"explanation\":\"...\",\"startLine\":1,\"endLine\":1}"
       ].join("\n"),
       [
         `误概念：${concept}`,
         `报错原文：${snapshot.message}`,
         `报错行：${snapshot.errorLine}`,
-        "当前完整代码：",
-        snapshot.code
+        "当前完整代码（行号仅用于定位）：",
+        numberedCode(snapshot.code)
       ].join("\n")
     );
 
@@ -218,7 +272,33 @@ export class HintGenerator {
       throw new Error("模型没有返回有效答案");
     }
 
-    return { code, explanation };
+    const totalLines = lineCount(snapshot.code);
+    const fallbackLine = lineNumber(
+      snapshot.errorLine,
+      1,
+      totalLines
+    );
+    const startLine = lineNumber(
+      response.startLine,
+      fallbackLine,
+      totalLines
+    );
+    const endLine = Math.max(
+      startLine,
+      lineNumber(response.endLine, startLine, totalLines)
+    );
+
+    return {
+      code: selectAnswerSnippet(
+        code,
+        snapshot.code,
+        startLine,
+        endLine
+      ),
+      explanation,
+      startLine,
+      endLine
+    };
   }
 }
 
@@ -308,6 +388,7 @@ export async function judgeUnderstanding(
           "correct：核心机制正确，closeness >= 0.75。",
           "partial：方向接近，closeness 0.40 到 0.74。",
           "wrong：归因或代码方向错误，closeness < 0.40。",
+          "标准答案可能只是一段需要替换的最小代码片段，不是完整文件。",
           "只输出 JSON：{\"judgment\":\"correct|partial|wrong\",\"closeness\":0.0,\"reason\":\"...\"}"
         ].join("\n"),
         [
@@ -316,7 +397,7 @@ export async function judgeUnderstanding(
           `报错行：${snapshot?.errorLine ?? "未提供"}`,
           "相关代码：",
           snapshot ? lineWindow(snapshot.code, snapshot.errorLine) : "未提供",
-          `标准答案代码：${referenceAnswer?.code ?? "未提供"}`,
+          `标准修正片段：${referenceAnswer?.code ?? "未提供"}`,
           `标准解释：${referenceAnswer?.explanation ?? "未提供"}`,
           `学生回答：${userAnswer || "未提供"}`,
           `学生当前代码：${userCode ?? "未提供"}`

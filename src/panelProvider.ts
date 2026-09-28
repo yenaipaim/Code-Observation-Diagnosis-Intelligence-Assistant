@@ -16,7 +16,11 @@ export interface PanelActions {
   configureApiKey: () => Promise<void>;
   openLearningLog: () => Promise<void>;
   copyAnswer: (code: string) => Promise<void>;
-  insertAnswer: (code: string) => Promise<void>;
+  applyFix: (
+    code: string,
+    startLine?: number,
+    endLine?: number
+  ) => Promise<void>;
   openLogEntry: (entryId: string) => Promise<void>;
   treatDuplicateAsNew: () => Promise<void>;
 }
@@ -25,6 +29,8 @@ interface WebviewMessage {
   type?: string;
   value?: string;
   code?: string;
+  startLine?: number;
+  endLine?: number;
   id?: string;
   concept?: string;
   checked?: boolean;
@@ -141,8 +147,12 @@ export class PanelProvider implements vscode.WebviewViewProvider {
         case "copy-answer":
           await this.actions.copyAnswer(message.code ?? "");
           break;
-        case "insert-answer":
-          await this.actions.insertAnswer(message.code ?? "");
+        case "apply-fix":
+          await this.actions.applyFix(
+            message.code ?? "",
+            message.startLine,
+            message.endLine
+          );
           break;
         case "open-log-entry":
           if (message.id) {

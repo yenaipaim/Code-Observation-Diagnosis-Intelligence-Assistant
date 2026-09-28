@@ -69,7 +69,9 @@ test("answer generation is allowed only through the explicit answer method", asy
       userPrompt = user;
       return {
         code: "for i in range(len(nums)):\n    print(nums[i])",
-        explanation: "结束值应改为 len(nums)。"
+        explanation: "结束值应改为 len(nums)。",
+        startLine: 1,
+        endLine: 2
       } as T;
     }
   });
@@ -85,9 +87,72 @@ test("answer generation is allowed only through the explicit answer method", asy
 
   assert.match(answer.code, /range\(len\(nums\)\)/);
   assert.match(answer.explanation, /len\(nums\)/);
+  assert.equal(answer.startLine, 1);
+  assert.equal(answer.endLine, 2);
   assert.match(systemPrompt, /code/);
   assert.match(systemPrompt, /explanation/);
+  assert.match(systemPrompt, /最小代码片段/);
+  assert.match(systemPrompt, /startLine/);
   assert.match(userPrompt, /range\(len\(nums\) \+ 1\)/);
+  assert.match(userPrompt, /1: for i/);
+});
+
+test("answer generation preserves part lines and falls back to the error line", async () => {
+  const generator = new HintGenerator({
+    completeJson: async <T>() =>
+      ({
+        code: "    print(nums[i])",
+        explanation: "只修正当前缩进行。",
+        startLine: 99,
+        endLine: 100
+      }) as T
+  });
+
+  const answer = await generator.generateAnswer(
+    {
+      message: "IndexError: list index out of range",
+      errorLine: 2,
+      code: "for i in range(len(nums) + 1):\n    print(nums[i])"
+    },
+    "off_by_one"
+  );
+
+  assert.match(answer.code, /^    print/);
+  assert.equal(answer.startLine, 2);
+  assert.equal(answer.endLine, 2);
+});
+
+test("answer generation trims a full-code response down to the requested range", async () => {
+  const generator = new HintGenerator({
+    completeJson: async <T>() =>
+      ({
+        code: [
+          "nums = [1, 2, 3]",
+          "for i in range(len(nums)):",
+          "    print(nums[i])"
+        ].join("\n"),
+        explanation: "只改循环边界。",
+        startLine: 2,
+        endLine: 2
+      }) as T
+  });
+
+  const answer = await generator.generateAnswer(
+    {
+      message: "IndexError: list index out of range",
+      errorLine: 2,
+      code: [
+        "nums = [1, 2, 3]",
+        "for i in range(len(nums) + 1):",
+        "    print(nums[i])"
+      ].join("\n")
+    },
+    "off_by_one"
+  );
+
+  assert.equal(answer.code, "for i in range(len(nums)):");
+  assert.equal(answer.startLine, 2);
+  assert.equal(answer.endLine, 2);
 });
 
 test("hint generation rejects an answer-shaped code block", async () => {

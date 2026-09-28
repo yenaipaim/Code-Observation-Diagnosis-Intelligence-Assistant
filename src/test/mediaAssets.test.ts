@@ -28,13 +28,14 @@ test("learning log exposes timeline, all-data, and row deletion controls", async
   assert.match(script, /checkbox/);
 });
 
-test("answer code exposes insert and copy actions", async () => {
+test("answer code exposes fix and copy actions", async () => {
   const script = await media("panel.js");
 
   assert.match(script, /复制/);
-  assert.match(script, /插入/);
+  assert.match(script, /修正/);
+  assert.match(script, /修正代码/);
   assert.match(script, /copy-answer/);
-  assert.match(script, /insert-answer/);
+  assert.match(script, /apply-fix/);
 });
 
 test("panel shows answer access, AI closeness and repeat scoring", async () => {

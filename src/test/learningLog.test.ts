@@ -172,7 +172,7 @@ test("only real completions count as challenge repeats", () => {
     concept: "off_by_one",
     resolution: "viewed_answer",
     understandingSummary: "查看答案",
-    confidenceDelta: 0,
+    confidenceDelta: 0.05,
     hintIndex: 1,
     attempts: 1
   });

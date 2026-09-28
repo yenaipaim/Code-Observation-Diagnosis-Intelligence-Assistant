@@ -9,6 +9,7 @@ import {
   confidenceDeltaFor,
   emptyLearnerModel,
   LearnerModelStore,
+  MIN_POSITIVE_CONFIDENCE_DELTA,
   recordChallengeCompletion,
   recordOutcome
 } from "../learnerModel";
@@ -84,7 +85,7 @@ test("consecutive skips reduce the next skip reward", () => {
   );
 });
 
-test("viewing the answer does not change confidence", () => {
+test("viewing the answer adds only the minimum confidence delta", () => {
   assert.equal(
     confidenceDeltaFor({
       fixed: false,
@@ -92,7 +93,20 @@ test("viewing the answer does not change confidence", () => {
       skipped: false,
       viewedAnswer: true
     }),
-    0
+    MIN_POSITIVE_CONFIDENCE_DELTA
+  );
+});
+
+test("viewing the answer still respects the repeat multiplier", () => {
+  assert.equal(
+    confidenceDeltaFor({
+      fixed: false,
+      usedHint: true,
+      skipped: false,
+      viewedAnswer: true,
+      scoreMultiplier: 0.5
+    }),
+    MIN_POSITIVE_CONFIDENCE_DELTA / 2
   );
 });
 

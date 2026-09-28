@@ -81,3 +81,16 @@ test("viewing the answer requires confirmation", async () => {
   assert.match(revealAction, /你确定查看答案吗？/);
   assert.match(revealAction, /controller\.revealAnswer/);
 });
+
+test("applying an answer replaces only the requested line range", async () => {
+  const source = await extensionSource();
+  const applyFix = source.slice(
+    source.indexOf("const applyFix"),
+    source.indexOf("panelProvider = new PanelProvider")
+  );
+
+  assert.match(applyFix, /startLine/);
+  assert.match(applyFix, /endLine/);
+  assert.match(applyFix, /new vscode\.Range/);
+  assert.doesNotMatch(applyFix, /selection/);
+});

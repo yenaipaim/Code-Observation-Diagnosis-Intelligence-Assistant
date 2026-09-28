@@ -536,6 +536,8 @@ export class CoachController {
 
     this.answer = answer;
     this.referenceAnswer = answer;
+    const confidenceBefore =
+      this.model.concepts[level.concept]?.confidence ?? 0;
     const state = recordOutcome(this.model, {
       concept: level.concept,
       fixed: false,
@@ -543,13 +545,15 @@ export class CoachController {
       viewedAnswer: true,
       scoreMultiplier: level.scoreMultiplier
     });
+    const confidenceDelta =
+      Math.round((state.confidence - confidenceBefore) * 100) / 100;
     await this.options.logStore.append(
       createLearningLogEntry({
         fileName: level.file,
         concept: level.concept,
         resolution: "viewed_answer",
         understandingSummary: "查看答案",
-        confidenceDelta: 0,
+        confidenceDelta,
         hintIndex: level.hintIndex,
         attempts: level.attempts,
         errorLine: level.errorLine,
@@ -563,9 +567,9 @@ export class CoachController {
     );
     await this.options.modelStore.save(this.model);
     this.stage = "completed";
-    this.message = `这一关使用了答案。当前理解度：${Math.round(
-      state.confidence * 100
-    )}%。`;
+    this.message = `这一关使用了答案，理解度 +${Math.round(
+      confidenceDelta * 100
+    )}%。当前理解度：${Math.round(state.confidence * 100)}%。`;
     this.publish();
     return this.buildState();
   }

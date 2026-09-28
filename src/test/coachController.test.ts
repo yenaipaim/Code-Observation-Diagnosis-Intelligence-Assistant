@@ -263,7 +263,7 @@ test("submitting understanding after a fixed program completes the level", async
   assert.equal(logs[0].resolution, "after_hint");
 });
 
-test("answer is available on the first attempt and does not score", async () => {
+test("viewing the answer adds the minimum confidence without completing", async () => {
   const { controller, logs, getModel } = harness();
   await controller.openDiagnostic(snapshot());
   await controller.startChallenge();
@@ -274,9 +274,11 @@ test("answer is available on the first attempt and does not score", async () => 
 
   assert.match(state.answer?.code ?? "", /range\(len\(nums\)\)/);
   assert.equal(state.canRevealAnswer, false);
-  assert.equal(state.confidence, 0);
+  assert.equal(state.confidence, 0.05);
   assert.equal(logs[0].resolution, "viewed_answer");
-  assert.equal(getModel().concepts.off_by_one?.confidence, 0);
+  assert.equal(logs[0].confidenceDelta, 0.05);
+  assert.equal(getModel().concepts.off_by_one?.confidence, 0.05);
+  assert.match(state.message, /理解度 \+5%/);
 });
 
 test("an answer generation failure leaves the level open", async () => {

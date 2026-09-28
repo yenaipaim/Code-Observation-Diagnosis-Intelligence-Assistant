@@ -30,6 +30,8 @@ export interface OutcomeInput {
   now?: string;
 }
 
+export const MIN_POSITIVE_CONFIDENCE_DELTA = 0.05;
+
 export function emptyLearnerModel(userId = "local"): LearnerModel {
   return {
     user_id: userId,
@@ -91,7 +93,7 @@ export function confidenceDeltaFor(input: ConfidenceInput): number {
   let delta = 0;
 
   if (input.viewedAnswer) {
-    delta = 0;
+    delta = MIN_POSITIVE_CONFIDENCE_DELTA;
   } else if (input.judgment === "wrong") {
     delta = -0.1;
   } else if (input.fixed && input.skipped) {
@@ -99,7 +101,7 @@ export function confidenceDeltaFor(input: ConfidenceInput): number {
   } else if (input.fixed && input.judgment === "partial") {
     delta = 0.08;
   } else if (input.fixed && input.judgment === "correct") {
-    delta = input.usedHint ? 0.05 : 0.15;
+    delta = input.usedHint ? MIN_POSITIVE_CONFIDENCE_DELTA : 0.15;
   }
 
   return delta * (input.scoreMultiplier ?? 1);
@@ -143,7 +145,9 @@ export function recordOutcome(
   if ((input.skipped ?? false) && current.consecutive_skips >= 3) {
     delta =
       Math.round(
-        0.05 * (input.scoreMultiplier ?? 1) * 100
+        MIN_POSITIVE_CONFIDENCE_DELTA *
+          (input.scoreMultiplier ?? 1) *
+          100
       ) / 100;
   }
 

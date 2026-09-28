@@ -23,7 +23,7 @@
     check: '<path d="M20 6 9 17l-5-5"/>',
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/>',
     copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16V4h12"/>',
-    insert: '<path d="M12 5v14"/><path d="m5 12 7 7 7-7"/>'
+    fix: '<path d="m15 4 5 5"/><path d="M4 20h4l10-10-4-4L4 16Z"/>'
   };
 
   function icon(name) {
@@ -257,7 +257,7 @@
     if (state.stage === "completed") {
       if (state.answer) {
         const codeSection = element("section", "section");
-        codeSection.append(element("div", "eyebrow", "可运行代码"));
+        codeSection.append(element("div", "eyebrow", "修正代码"));
         const pre = element("pre", "code-block");
         const code = element("code");
         code.textContent = state.answer.code;
@@ -272,9 +272,11 @@
           }, "secondary")
         );
         codeActions.append(
-          payloadButton("插入", "insert", {
-            type: "insert-answer",
-            code: state.answer.code
+          payloadButton("修正", "fix", {
+            type: "apply-fix",
+            code: state.answer.code,
+            startLine: state.answer.startLine,
+            endLine: state.answer.endLine
           })
         );
         codeSection.append(codeActions);

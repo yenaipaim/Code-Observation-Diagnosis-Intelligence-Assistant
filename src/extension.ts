@@ -259,32 +259,75 @@ export function activate(context: vscode.ExtensionContext): void {
     await vscode.window.showInformationMessage("答案代码已复制。");
   };
 
-  const insertAnswer = async (code: string): Promise<void> => {
+  const applyFix = async (
+    code: string,
+    startLine?: number,
+    endLine?: number
+  ): Promise<void> => {
     if (!code.trim()) {
       return;
     }
 
-    const activeEditor =
-      vscode.window.activeTextEditor?.document.languageId === "python"
-        ? vscode.window.activeTextEditor
-        : vscode.window.visibleTextEditors.find(
-            (editor) => editor.document.languageId === "python"
-          );
-    if (!activeEditor) {
-      await vscode.window.showWarningMessage("请先打开一个 Python 文件。");
+    const state = await controller.currentState();
+    const currentFile = controller.currentFile();
+    const matchesCurrentFile = (editor: vscode.TextEditor): boolean => {
+      if (!currentFile) {
+        return editor.document.languageId === "python";
+      }
+      const left = path.resolve(editor.document.uri.fsPath);
+      const right = path.resolve(currentFile);
+      return process.platform === "win32"
+        ? left.toLowerCase() === right.toLowerCase()
+        : left === right;
+    };
+    const targetEditor =
+      vscode.window.visibleTextEditors.find(matchesCurrentFile) ??
+      (currentFile
+        ? undefined
+        : vscode.window.activeTextEditor?.document.languageId === "python"
+          ? vscode.window.activeTextEditor
+          : undefined);
+    if (!targetEditor) {
+      await vscode.window.showWarningMessage(
+        "请先打开发生错误的 Python 文件。"
+      );
       return;
     }
 
-    const selection = activeEditor.selection;
-    const targetRange = selection.isEmpty
-      ? new vscode.Range(selection.active, selection.active)
-      : selection;
-    const inserted = await activeEditor.edit((edit) => {
+    const document = targetEditor.document;
+    const fallbackLine = Math.min(
+      Math.max(1, state.level?.errorLine ?? 1),
+      document.lineCount
+    );
+    const validLine = (
+      value: number | undefined,
+      fallback: number
+    ): number =>
+      typeof value === "number" &&
+      Number.isInteger(value) &&
+      value >= 1 &&
+      value <= document.lineCount
+        ? value
+        : fallback;
+    const firstLine = validLine(startLine, fallbackLine);
+    const lastLine = Math.max(
+      firstLine,
+      validLine(endLine, firstLine)
+    );
+    const targetRange = new vscode.Range(
+      firstLine - 1,
+      0,
+      lastLine - 1,
+      document.lineAt(lastLine - 1).text.length
+    );
+    const applied = await targetEditor.edit((edit) => {
       edit.replace(targetRange, code);
     });
-    if (!inserted) {
-      await vscode.window.showWarningMessage("插入答案代码失败。");
+    if (!applied) {
+      await vscode.window.showWarningMessage("修正当前代码片段失败。");
+      return;
     }
+    await vscode.window.showInformationMessage("已修正当前错误代码片段。");
   };
 
   panelProvider = new PanelProvider(
@@ -312,7 +355,7 @@ export function activate(context: vscode.ExtensionContext): void {
       },
       openLearningLog: focusLearningLog,
       copyAnswer,
-      insertAnswer,
+      applyFix,
       openLogEntry: focusLearningLog,
       treatDuplicateAsNew: async () => {
         await controller.treatDuplicateAsNew();

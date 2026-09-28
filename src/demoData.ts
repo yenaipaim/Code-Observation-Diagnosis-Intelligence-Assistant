@@ -100,94 +100,48 @@ function demoAnswerCode(
 ): string {
   if (concept === "off_by_one") {
     if (/\bwhile\b/.test(snapshot.code)) {
-      return [
-        "nums = [10, 20, 30]",
-        "i = 0",
-        "while i < len(nums):",
-        "    print(nums[i])",
-        "    i += 1"
-      ].join("\n");
+      return "while i < len(nums):";
     }
-    return [
-      "nums = [10, 20, 30]",
-      "for i in range(len(nums)):",
-      "    print(nums[i])"
-    ].join("\n");
+    return "for i in range(len(nums)):";
   }
 
   if (concept === "return_vs_print") {
-    return [
-      "def make_message():",
-      '    return "hello"',
-      "",
-      "message = make_message()",
-      "print(message)"
-    ].join("\n");
+    return '    return "hello"';
   }
 
   if (concept === "name_error") {
-    return [
-      'name = "Alice"',
-      "print(name)"
-    ].join("\n");
+    return 'name = "Alice"';
   }
 
   if (concept === "syntax_error") {
-    return [
-      "for i in range(3):",
-      "    print(i)"
-    ].join("\n");
+    return "for i in range(3):";
   }
 
   if (concept === "key_error") {
-    return [
-      'person = {"name": "Alice"}',
-      'print(person.get("age", "unknown"))'
-    ].join("\n");
+    return 'person.get("age", "unknown")';
   }
 
   if (concept === "value_error") {
-    return [
-      'text = "123"',
-      "number = int(text)",
-      "print(number)"
-    ].join("\n");
+    return "number = int(text)";
   }
 
   if (concept === "zero_division") {
-    return [
-      "total = 10",
-      "count = 0",
-      "result = total / count if count else 0",
-      "print(result)"
-    ].join("\n");
+    return "result = total / count if count else 0";
   }
 
   if (concept === "attribute_error") {
-    return [
-      'text = "hello"',
-      "print(text.upper())"
-    ].join("\n");
+    return "print(text.upper())";
   }
 
   if (concept === "import_error") {
-    return [
-      "import math",
-      "print(math.sqrt(9))"
-    ].join("\n");
+    return "import math";
   }
 
   if (concept === "indentation_error") {
-    return [
-      "if True:",
-      '    print("ok")'
-    ].join("\n");
+    return '    print("ok")';
   }
 
-  return [
-    "age = 18",
-    'print("Age: " + str(age))'
-  ].join("\n");
+  return 'print("Age: " + str(age))';
 }
 
 export function demoHint(
@@ -230,9 +184,19 @@ export function demoAnswer(
   concept: MisconceptionId,
   snapshot: DiagnosticSnapshot
 ): AnswerContent {
+  const totalLines = Math.max(
+    1,
+    snapshot.code.replace(/\r\n?/g, "\n").split("\n").length
+  );
+  const line = Math.min(
+    Math.max(1, Math.trunc(snapshot.errorLine)),
+    totalLines
+  );
   return {
     code: demoAnswerCode(concept, snapshot),
-    explanation: DEMO_ANSWER_EXPLANATIONS[concept]
+    explanation: DEMO_ANSWER_EXPLANATIONS[concept],
+    startLine: line,
+    endLine: line
   };
 }
 

@@ -103,6 +103,8 @@ export interface LearningLogEntry {
 export interface AnswerContent {
   code: string;
   explanation: string;
+  startLine?: number;
+  endLine?: number;
 }
 
 export interface DuplicateErrorReference {

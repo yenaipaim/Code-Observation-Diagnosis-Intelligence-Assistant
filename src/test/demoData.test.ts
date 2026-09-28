@@ -59,6 +59,8 @@ test("demo answer is available offline for every concept", () => {
     const answer = demoAnswer(concept, sampleContext(concept));
     assert.ok(answer.code.length > 10);
     assert.ok(answer.explanation.length > 10);
+    assert.equal(answer.startLine, 1);
+    assert.equal(answer.endLine, 1);
   }
 });
 
