@@ -33,12 +33,6 @@
 
 扩展已经发布到 VS Code Marketplace ，可在扩展面板搜索 `CODIA` 安装。
 
-本地安装时，在扩展面板右上角选择 `Install from VSIX...`，然后选择：
-
-```text
-output/packages/programming-coach-0.5.1.vsix
-```
-
 ## 项目结构
 
 ```text
