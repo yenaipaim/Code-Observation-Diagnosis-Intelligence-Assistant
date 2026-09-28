@@ -127,7 +127,7 @@
     "compile": "npm run clean && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node --test dist/test/*.test.js",
-    "package": "node -e \"require('node:fs').mkdirSync('artifacts',{recursive:true})\" && npm exec --yes @vscode/vsce -- package --out artifacts/programming-coach.vsix"
+    "package": "node -e \"require('node:fs').mkdirSync('output/packages',{recursive:true})\" && npm exec --yes @vscode/vsce -- package --out output/packages/programming-coach.vsix"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

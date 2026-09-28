@@ -18,7 +18,7 @@ npm run package
 - TypeScript 编译通过。
 - 全部单元测试通过。
 - VSIX 打包命令可以正常执行。
-- 不提交 `node_modules/`、`dist/`、`artifacts/` 或 `*.vsix`。
+- 不提交 `node_modules/`、`dist/`、`output/`、`artifacts/` 或 `*.vsix`。
 - 不提交 API Key、访问令牌或其他本地凭据。
 
 业务逻辑修改应同时补充或更新 `src/test/` 下的回归测试。

@@ -10,3 +10,5 @@ tsconfig.json
 .gitignore
 .editorconfig
 CONTRIBUTING.md
+output/**
+artifacts/**

@@ -10,6 +10,7 @@ coverage/
 # Packaged extensions
 *.vsix
 artifacts/
+output/
 
 # VS Code test workspace
 .vscode-test/
