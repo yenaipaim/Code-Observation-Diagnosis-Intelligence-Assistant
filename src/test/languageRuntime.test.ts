@@ -108,6 +108,19 @@ test("parses Java runtime exceptions", () => {
   assert.match(parsed?.message ?? "", /NullPointerException/);
 });
 
+test("prefers the user frame for Java NumberFormatException", () => {
+  const parsed = parseJavaRuntimeError([
+    'Exception in thread "main" java.lang.NumberFormatException: For input string: "abc"',
+    "\tat java.base/java.lang.NumberFormatException.forInputString(NumberFormatException.java:67)",
+    "\tat java.base/java.lang.Integer.parseInt(Integer.java:662)",
+    "\tat NumberFormat.main(NumberFormat.java:3)"
+  ].join("\n"));
+
+  assert.equal(parsed?.file, "NumberFormat.java");
+  assert.equal(parsed?.errorLine, 3);
+  assert.match(parsed?.message ?? "", /NumberFormatException/);
+});
+
 test("parses Node syntax errors", () => {
   const parsed = parseJavaScriptRuntimeError([
     "C:\\work\\app.js:3",

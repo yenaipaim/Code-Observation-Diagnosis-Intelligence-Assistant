@@ -110,6 +110,7 @@ export interface LearningLogEntry {
   errorLine?: number;
   errorMessage?: string;
   errorCode?: string;
+  errorCodeIsPart?: boolean;
   challengeKey?: string;
   repeatCount?: number;
   scoreMultiplier?: number;

@@ -60,6 +60,26 @@ test("understanding judge falls back when the client fails", async () => {
   assert.match(result.reason, /关键词兜底/);
 });
 
+test("understanding judge can surface API errors for automatic fallback", async () => {
+  await assert.rejects(
+    () =>
+      judgeUnderstanding(
+        "off_by_one",
+        "结束值多了一次",
+        {
+          completeJson: async () => {
+            throw new Error("offline");
+          }
+        },
+        undefined,
+        undefined,
+        undefined,
+        { throwOnApiError: true }
+      ),
+    /offline/
+  );
+});
+
 test("answer generation is allowed only through the explicit answer method", async () => {
   let systemPrompt = "";
   let userPrompt = "";
@@ -91,13 +111,14 @@ test("answer generation is allowed only through the explicit answer method", asy
   assert.equal(answer.endLine, 2);
   assert.match(systemPrompt, /code/);
   assert.match(systemPrompt, /explanation/);
-  assert.match(systemPrompt, /最小代码片段/);
+  assert.match(systemPrompt, /完整代码部分/);
+  assert.match(systemPrompt, /不能只截取报错行/);
   assert.match(systemPrompt, /startLine/);
   assert.match(userPrompt, /range\(len\(nums\) \+ 1\)/);
   assert.match(userPrompt, /1: for i/);
 });
 
-test("answer generation preserves part lines and falls back to the error line", async () => {
+test("answer generation expands a line fallback to the complete error part", async () => {
   const generator = new HintGenerator({
     completeJson: async <T>() =>
       ({
@@ -117,12 +138,45 @@ test("answer generation preserves part lines and falls back to the error line", 
     "off_by_one"
   );
 
-  assert.match(answer.code, /^    print/);
-  assert.equal(answer.startLine, 2);
+  assert.match(answer.code, /^for i in range\(len\(nums\) \+ 1\):/);
+  assert.match(answer.code, /^    print/m);
+  assert.equal(answer.startLine, 1);
   assert.equal(answer.endLine, 2);
 });
 
-test("answer generation trims a full-code response down to the requested range", async () => {
+test("answer generation accepts a complete part without line numbers", async () => {
+  const generator = new HintGenerator({
+    completeJson: async <T>() =>
+      ({
+        code: [
+          "for i in range(len(nums)):",
+          "    print(nums[i])"
+        ].join("\n"),
+        explanation: "修正完整循环部分。"
+      }) as T
+  });
+
+  const answer = await generator.generateAnswer(
+    {
+      message: "IndexError: list index out of range",
+      errorLine: 2,
+      code: [
+        "for i in range(len(nums) + 1):",
+        "    print(nums[i])"
+      ].join("\n")
+    },
+    "off_by_one"
+  );
+
+  assert.equal(
+    answer.code,
+    "for i in range(len(nums)):\n    print(nums[i])"
+  );
+  assert.equal(answer.startLine, 1);
+  assert.equal(answer.endLine, 2);
+});
+
+test("answer generation trims a full-code response to the complete error part", async () => {
   const generator = new HintGenerator({
     completeJson: async <T>() =>
       ({
@@ -150,9 +204,12 @@ test("answer generation trims a full-code response down to the requested range",
     "off_by_one"
   );
 
-  assert.equal(answer.code, "for i in range(len(nums)):");
+  assert.equal(
+    answer.code,
+    "for i in range(len(nums)):\n    print(nums[i])"
+  );
   assert.equal(answer.startLine, 2);
-  assert.equal(answer.endLine, 2);
+  assert.equal(answer.endLine, 3);
 });
 
 test("answer generation strips language-tagged code fences", async () => {

@@ -1,8 +1,8 @@
 {
   "name": "programming-coach",
   "displayName": "CODIA - 编程学习助手",
-  "description": "CODIA is a Socratic Python, Java, and JavaScript debugging coach for VS Code.",
-  "version": "0.5.1",
+  "description": "CODIA is an offline-first Socratic Python, Java, and JavaScript debugging coach for VS Code.",
+  "version": "0.5.8",
   "publisher": "codia",
   "repository": {
     "type": "git",
@@ -134,7 +134,7 @@
         "programmingCoach.demoMode": {
           "type": "boolean",
           "default": false,
-          "description": "使用本地预缓存，不调用外部 API。"
+          "description": "强制使用演示模式。未配置 API Key 或 API 中断时会自动使用演示模式。"
         },
         "programmingCoach.javaRuntimePath": {
           "type": "string",

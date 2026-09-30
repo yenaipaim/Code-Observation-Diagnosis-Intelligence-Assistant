@@ -106,3 +106,16 @@ test("terminal and CodeLens wiring support every runtime profile", async () => {
   assert.match(source, /language: "java"/);
   assert.match(source, /language: "javascript"/);
 });
+
+test("API failures fall back to the demo services automatically", async () => {
+  const source = await extensionSource();
+
+  assert.match(source, /AutomaticRuntimeMode/);
+  assert.match(source, /handleApiFailure\("错误分类"/);
+  assert.match(source, /handleApiFailure\("提示生成"/);
+  assert.match(source, /handleApiFailure\("答案生成"/);
+  assert.match(source, /handleApiFailure\("理解判断"/);
+  assert.match(source, /throwOnApiError: true/);
+  assert.match(source, /demoHintGenerator\.generateAnswer/);
+  assert.doesNotMatch(source, /请先配置 API/);
+});

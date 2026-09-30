@@ -34,6 +34,7 @@ import {
 import {
   classifyMisconception
 } from "./misconceptionClassifier";
+import { AutomaticRuntimeMode } from "./runtimeMode";
 import {
   LearningLogProvider,
   PanelProvider
@@ -52,6 +53,7 @@ import {
   DiagnosticSnapshot,
   LANGUAGE_CONCEPT_IDS,
   LANGUAGE_LABELS,
+  MisconceptionId,
   PanelState,
   SUPPORTED_LANGUAGES,
   SupportedLanguage,
@@ -132,26 +134,96 @@ export function activate(context: vscode.ExtensionContext): void {
   let panelProvider: PanelProvider | undefined;
   let learningLogProvider: LearningLogProvider | undefined;
 
-  const isDemoMode = (): boolean =>
-    vscode.workspace
-      .getConfiguration("programmingCoach")
-      .get<boolean>("demoMode", false);
+  const runtimeMode = new AutomaticRuntimeMode(
+    () =>
+      vscode.workspace
+        .getConfiguration("programmingCoach")
+        .get<boolean>("demoMode", false),
+    () => apiKeyConfigured
+  );
+  const isDemoMode = (): boolean => runtimeMode.isDemoMode();
+  let controller!: CoachController;
 
+  const handleApiFailure = async (
+    operation: string,
+    error: unknown
+  ): Promise<void> => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!runtimeMode.isFallbackActive()) {
+      output.appendLine(
+        `[${new Date().toISOString()}] ${operation} API 失败，已切换演示模式：${message}`
+      );
+    }
+    runtimeMode.activateFallback();
+    if (controller) {
+      panelProvider?.postState(
+        await controller.currentState(),
+        apiKeyConfigured
+      );
+    }
+  };
+
+  const apiHintGenerator = new HintGenerator(
+    completer,
+    demoHint,
+    false,
+    demoAnswer
+  );
+  const demoHintGenerator = new HintGenerator(
+    undefined,
+    demoHint,
+    true,
+    demoAnswer
+  );
   const hintService: HintService = {
-    generateHint: (snapshot, concept, hintIndex) =>
-      new HintGenerator(
-        completer,
-        demoHint,
-        isDemoMode(),
-        demoAnswer
-      ).generateHint(snapshot, concept, hintIndex),
-    generateAnswer: (snapshot, concept) =>
-      new HintGenerator(
-        completer,
-        demoHint,
-        isDemoMode(),
-        demoAnswer
-      ).generateAnswer(snapshot, concept)
+    generateHint: async (snapshot, concept, hintIndex) => {
+      if (isDemoMode()) {
+        return demoHintGenerator.generateHint(
+          snapshot,
+          concept,
+          hintIndex
+        );
+      }
+      try {
+        return await apiHintGenerator.generateHint(
+          snapshot,
+          concept,
+          hintIndex
+        );
+      } catch (error) {
+        await handleApiFailure("提示生成", error);
+        return demoHintGenerator.generateHint(
+          snapshot,
+          concept,
+          hintIndex
+        );
+      }
+    },
+    generateAnswer: async (snapshot, concept) => {
+      if (isDemoMode()) {
+        return demoHintGenerator.generateAnswer(snapshot, concept);
+      }
+      try {
+        return await apiHintGenerator.generateAnswer(snapshot, concept);
+      } catch (error) {
+        await handleApiFailure("答案生成", error);
+        return demoHintGenerator.generateAnswer(snapshot, concept);
+      }
+    }
+  };
+
+  const demoAttemptJudgment = (
+    concept: MisconceptionId,
+    attempt: { text?: string; code?: string; codeFixed?: boolean }
+  ) => {
+    if (attempt.codeFixed && attempt.code) {
+      return {
+        judgment: "correct" as const,
+        reason: "演示模式：代码运行成功。",
+        closeness: 0.9
+      };
+    }
+    return demoJudgment(concept, attempt.text ?? "");
   };
 
   const judgmentService: JudgmentService = async (
@@ -161,35 +233,47 @@ export function activate(context: vscode.ExtensionContext): void {
     referenceAnswer
   ) => {
     if (isDemoMode()) {
-      if (attempt.codeFixed && attempt.code) {
-        return {
-          judgment: "correct",
-          reason: "演示模式：代码运行成功。",
-          closeness: 0.9
-        };
-      }
-      return demoJudgment(concept, attempt.text ?? "");
+      return demoAttemptJudgment(concept, attempt);
     }
-    return judgeUnderstanding(
-      concept,
-      attempt.text ?? "",
-      completer,
-      snapshot,
-      referenceAnswer,
-      attempt.code
-    );
+    try {
+      return await judgeUnderstanding(
+        concept,
+        attempt.text ?? "",
+        completer,
+        snapshot,
+        referenceAnswer,
+        attempt.code,
+        { throwOnApiError: true }
+      );
+    } catch (error) {
+      await handleApiFailure("理解判断", error);
+      return demoAttemptJudgment(concept, attempt);
+    }
   };
 
-  const controller = new CoachController({
-    classifier: async (snapshot) =>
-      classifyMisconception(snapshot, async (input) =>
-        classifyWithChatApi(completer, input, isDemoMode())
-      ),
+  controller = new CoachController({
+    classifier: async (snapshot) => {
+      if (isDemoMode()) {
+        return classifyMisconception(snapshot, async (input) =>
+          demoClassify(input)
+        );
+      }
+      try {
+        return await classifyMisconception(snapshot, async (input) => {
+          const result = await classifyWithChatApi(completer, input);
+          return result ?? demoClassify(input);
+        });
+      } catch (error) {
+        await handleApiFailure("错误分类", error);
+        return classifyMisconception(snapshot, async (input) =>
+          demoClassify(input)
+        );
+      }
+    },
     hintService,
     judgmentService,
     modelStore,
     logStore,
-    hasApiKey: async () => Boolean(await context.secrets.get(API_KEY_SECRET)),
     demoMode: isDemoMode,
     publish: (state) => {
       panelProvider?.postState(state, apiKeyConfigured);
@@ -456,7 +540,8 @@ export function activate(context: vscode.ExtensionContext): void {
   ): Promise<boolean> => {
     const parsed: ParsedRuntimeError | undefined =
       runtimeProfileForLanguage(language).parseRuntimeError(
-        runtimeOutput
+        runtimeOutput,
+        runningFile
       );
     if (!parsed) {
       return false;
@@ -745,7 +830,8 @@ export function activate(context: vscode.ExtensionContext): void {
           );
         }
 
-        if (controller.currentFile() && apiKeyConfigured) {
+        runtimeMode.resetFallback();
+        if (controller.currentFile() && !isDemoMode()) {
           await controller.requestHint();
         } else {
           panelProvider?.postState(
@@ -780,6 +866,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!demoModeChanged && !apiSettingsChanged) {
         return;
       }
+      runtimeMode.resetFallback();
       if (demoModeChanged && controller.currentFile()) {
         await controller.requestHint(false);
       } else {
@@ -892,55 +979,47 @@ export function activate(context: vscode.ExtensionContext): void {
 
   void (async () => {
     apiKeyConfigured = Boolean(await context.secrets.get(API_KEY_SECRET));
+    runtimeMode.resetFallback();
     panelProvider?.postState(await controller.currentState(), apiKeyConfigured);
   })();
 }
 
 async function classifyWithChatApi(
   completer: JsonCompleter,
-  snapshot: DiagnosticSnapshot,
-  demoMode: boolean
+  snapshot: DiagnosticSnapshot
 ): Promise<Classification | undefined> {
-  if (demoMode) {
-    return demoClassify(snapshot);
-  }
-
   const language = snapshot.language ?? "python";
   const conceptIds = LANGUAGE_CONCEPT_IDS[language];
-  try {
-    const result = await completer.completeJson<{
-      concept_id?: string;
-      confidence?: number;
-    }>(
-      [
-        `将 ${LANGUAGE_LABELS[language]} 初学者报错归类为以下之一：`,
-        conceptIds.join("、"),
-        "无法判断时 concept_id 返回 null。",
-        "只输出 JSON：{\"concept_id\":\"...\",\"confidence\":0.0}"
-      ].join("\n"),
-      [
-        `报错：${snapshot.message}`,
-        `行号：${snapshot.errorLine}`,
-        "代码：",
-        snapshot.code
-      ].join("\n")
-    );
+  const result = await completer.completeJson<{
+    concept_id?: string;
+    confidence?: number;
+  }>(
+    [
+      `将 ${LANGUAGE_LABELS[language]} 初学者报错归类为以下之一：`,
+      conceptIds.join("、"),
+      "无法判断时 concept_id 返回 null。",
+      "只输出 JSON：{\"concept_id\":\"...\",\"confidence\":0.0}"
+    ].join("\n"),
+    [
+      `报错：${snapshot.message}`,
+      `行号：${snapshot.errorLine}`,
+      "代码：",
+      snapshot.code
+    ].join("\n")
+  );
 
-    if (
-      isMisconceptionId(result.concept_id) &&
-      conceptIds.includes(result.concept_id)
-    ) {
-      return {
-        concept: result.concept_id,
-        confidence:
-          typeof result.confidence === "number"
-            ? Math.max(0, Math.min(1, result.confidence))
-            : 0.7,
-        source: "llm"
-      };
-    }
-  } catch {
-    return undefined;
+  if (
+    isMisconceptionId(result.concept_id) &&
+    conceptIds.includes(result.concept_id)
+  ) {
+    return {
+      concept: result.concept_id,
+      confidence:
+        typeof result.confidence === "number"
+          ? Math.max(0, Math.min(1, result.confidence))
+          : 0.7,
+      source: "llm"
+    };
   }
 
   return undefined;

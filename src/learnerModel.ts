@@ -281,10 +281,52 @@ export function normalizeLearnerModel(value: unknown): LearnerModel {
     user_id:
       typeof parsed.user_id === "string" ? parsed.user_id : "local",
     concepts: { ...legacyConcepts, ...concepts },
-    challenges:
-      parsed.challenges && typeof parsed.challenges === "object"
-        ? (parsed.challenges as LearnerModel["challenges"])
-        : {},
+    challenges: normalizeChallenges(parsed.challenges),
     trackedConcepts: sortLanguageConceptKeys(tracked)
   };
+}
+
+function normalizeChallenges(value: unknown): LearnerModel["challenges"] {
+  const challenges: LearnerModel["challenges"] = {};
+  if (!value || typeof value !== "object") {
+    return challenges;
+  }
+
+  for (const [rawKey, rawState] of Object.entries(value)) {
+    if (!rawState || typeof rawState !== "object") {
+      continue;
+    }
+    const state = rawState as {
+      completions?: unknown;
+      last_seen?: unknown;
+    };
+    if (
+      typeof state.completions !== "number" ||
+      typeof state.last_seen !== "string"
+    ) {
+      continue;
+    }
+    challenges[normalizeChallengeKey(rawKey)] = {
+      completions: state.completions,
+      last_seen: state.last_seen
+    };
+  }
+
+  return challenges;
+}
+
+function normalizeChallengeKey(key: string): string {
+  if (/^(?:python|java|javascript)\n/.test(key)) {
+    return key;
+  }
+
+  const file = key.split("\n", 1)[0].toLowerCase();
+  const language: SupportedLanguage = file.endsWith(".java")
+    ? "java"
+    : file.endsWith(".js") ||
+        file.endsWith(".mjs") ||
+        file.endsWith(".cjs")
+      ? "javascript"
+      : "python";
+  return `${language}\n${key}`;
 }

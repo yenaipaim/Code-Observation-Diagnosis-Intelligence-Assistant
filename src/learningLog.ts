@@ -18,6 +18,7 @@ import {
   languageConceptKey,
   parseLanguageConceptKey
 } from "./types";
+import { extractErrorPartCode } from "./codePart";
 
 export interface NewLearningLogEntry {
   language?: SupportedLanguage;
@@ -31,6 +32,7 @@ export interface NewLearningLogEntry {
   errorLine?: number;
   errorMessage?: string;
   errorCode?: string;
+  errorCodeIsPart?: boolean;
   challengeKey?: string;
   repeatCount?: number;
   scoreMultiplier?: number;
@@ -60,11 +62,22 @@ export function createLearningLogEntry(
   input: NewLearningLogEntry
 ): LearningLogEntry {
   const timestamp = input.now ?? new Date().toISOString();
+  const language = input.language ?? "python";
+  const errorCode =
+    input.errorCode &&
+    input.errorLine !== undefined &&
+    input.errorCodeIsPart !== true
+      ? extractErrorPartCode(
+          input.errorCode,
+          language,
+          input.errorLine
+        )
+      : input.errorCode;
   return {
     id: `${timestamp}-${input.concept}-${Math.random().toString(16).slice(2)}`,
     timestamp,
     fileName: input.fileName,
-    language: input.language ?? "python",
+    language,
     concept: input.concept,
     resolution: input.resolution,
     understandingSummary: input.understandingSummary,
@@ -73,7 +86,8 @@ export function createLearningLogEntry(
     attempts: input.attempts,
     errorLine: input.errorLine,
     errorMessage: input.errorMessage,
-    errorCode: input.errorCode,
+    errorCode,
+    errorCodeIsPart: errorCode ? true : undefined,
     challengeKey: input.challengeKey,
     repeatCount: input.repeatCount,
     scoreMultiplier: input.scoreMultiplier,
@@ -121,6 +135,7 @@ export function normalizeErrorCode(
 }
 
 export interface ChallengeIdentityInput {
+  language?: SupportedLanguage;
   file?: string;
   concept: MisconceptionId;
   errorLine: number;
@@ -134,6 +149,7 @@ export function createChallengeKey(input: ChallengeIdentityInput): string {
     .trim()
     .toLowerCase();
   return [
+    input.language ?? "python",
     normalizeFile(input.file),
     input.concept,
     message,
@@ -300,10 +316,22 @@ function normalizeLearningLogEntry(
   if (!LANGUAGE_CONCEPT_IDS[language].includes(entry.concept)) {
     return undefined;
   }
+  const errorCode =
+    entry.errorCode &&
+    entry.errorLine !== undefined &&
+    entry.errorCodeIsPart !== true
+      ? extractErrorPartCode(
+          entry.errorCode,
+          language,
+          entry.errorLine
+        )
+      : entry.errorCode;
   return {
     ...(entry as LearningLogEntry),
     language,
-    concept: entry.concept
+    concept: entry.concept,
+    errorCode,
+    errorCodeIsPart: errorCode ? true : undefined
   };
 }
 
@@ -316,13 +344,11 @@ function normalizeFile(fileName: string | undefined): string {
 function learningEntryChallengeKey(
   entry: LearningLogEntry
 ): string | undefined {
-  if (entry.challengeKey) {
+  if (!entry.errorCode || entry.errorLine === undefined) {
     return entry.challengeKey;
   }
-  if (!entry.errorCode || entry.errorLine === undefined) {
-    return undefined;
-  }
   return createChallengeKey({
+    language: entry.language,
     file: entry.fileName,
     concept: entry.concept,
     errorLine: entry.errorLine,

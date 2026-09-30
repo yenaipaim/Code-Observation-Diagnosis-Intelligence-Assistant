@@ -21,7 +21,6 @@ function snapshot(): DiagnosticSnapshot {
 function harness(options?: {
   judgment?: "correct" | "partial" | "wrong";
   closeness?: number;
-  hasApiKey?: boolean;
   concepts?: MisconceptionId[];
   answerThrows?: boolean;
 }) {
@@ -71,7 +70,6 @@ function harness(options?: {
         return logs;
       }
     },
-    hasApiKey: async () => options?.hasApiKey ?? true,
     demoMode: false,
     publish: (state) => {
       published.push(state.stage);
@@ -296,6 +294,30 @@ test("viewing the answer adds the minimum confidence without completing", async 
   assert.match(state.message, /理解度 \+5%/);
 });
 
+test("error details keep only the failing code part", async () => {
+  const { controller, logs } = harness();
+  await controller.openDiagnostic({
+    ...snapshot(),
+    errorLine: 4,
+    code: [
+      'print("start")',
+      "nums = [1, 2, 3]",
+      "for i in range(len(nums) + 1):",
+      "    print(nums[i])",
+      'print("end")'
+    ].join("\n")
+  });
+  await controller.startChallenge();
+  await controller.revealAnswer();
+
+  assert.equal(
+    logs[0].errorCode,
+    "for i in range(len(nums) + 1):\n    print(nums[i])"
+  );
+  assert.doesNotMatch(logs[0].errorCode ?? "", /print\("start"\)|print\("end"\)/);
+  assert.equal(logs[0].errorCodeIsPart, true);
+});
+
 test("an answer generation failure leaves the level open", async () => {
   const { controller, logs } = harness({ answerThrows: true });
   await controller.openDiagnostic(snapshot());
@@ -336,8 +358,8 @@ test("a wrong explanation lowers confidence by 0.10", async () => {
   );
 });
 
-test("answer prerequisite failure does not complete the level", async () => {
-  const { controller } = harness({ hasApiKey: false });
+test("missing API key does not block the demo answer", async () => {
+  const { controller } = harness();
   await controller.openDiagnostic(snapshot());
   await controller.startChallenge();
   await controller.openDiagnostic({
@@ -350,8 +372,8 @@ test("answer prerequisite failure does not complete the level", async () => {
   });
   const state = await controller.revealAnswer();
 
-  assert.equal(state.stage, "configuration");
-  assert.equal(state.level?.status, "in_progress");
+  assert.equal(state.stage, "completed");
+  assert.match(state.answer?.code ?? "", /range\(len\(nums\)\)/);
 });
 
 test("revealed answer contains runnable code before its explanation", async () => {
@@ -502,4 +524,77 @@ test("Java levels keep language metadata and isolated mastery", async () => {
   await controller.submitUnderstanding("对象可能为空");
   await controller.markCodeFixed();
   assert.equal(logs[0].language, "java");
+});
+
+test("repeated Java challenges score half", async () => {
+  const { controller, logs, getModel } = harness({
+    concepts: ["null_reference", "null_reference"]
+  });
+  const javaSnapshot: DiagnosticSnapshot = {
+    language: "java",
+    file: "Main.java",
+    message:
+      'java.lang.NullPointerException: Cannot invoke "String.length()" because "text" is null',
+    errorLine: 3,
+    code: 'class Main { public static void main(String[] args) { String text = null; text.length(); } }'
+  };
+
+  await controller.openDiagnostic(javaSnapshot);
+  await controller.startChallenge();
+  await controller.submitUnderstanding("对象为空时不能调用方法");
+  await controller.markCodeFixed();
+
+  const repeat = await controller.openDiagnostic(javaSnapshot);
+  assert.equal(repeat.level?.repeatCount, 1);
+  assert.equal(repeat.level?.scoreMultiplier, 0.5);
+
+  await controller.startChallenge();
+  await controller.submitUnderstanding("对象为空时不能调用方法");
+  await controller.markCodeFixed();
+
+  assert.equal(logs.length, 2);
+  assert.equal(logs[1].language, "java");
+  assert.equal(logs[1].repeatCount, 1);
+  assert.equal(logs[1].scoreMultiplier, 0.5);
+  assert.equal(logs[1].confidenceDelta, 0.03);
+  assert.equal(
+    getModel().concepts["java:null_reference"]?.confidence,
+    0.08
+  );
+});
+
+test("repeated JavaScript challenges score half", async () => {
+  const { controller, logs, getModel } = harness({
+    concepts: ["async_error", "async_error"]
+  });
+  const javaScriptSnapshot: DiagnosticSnapshot = {
+    language: "javascript",
+    file: "app.js",
+    message: "UnhandledPromiseRejection: task failed",
+    errorLine: 2,
+    code: "async function run() { await Promise.reject(new Error('failed')); }"
+  };
+
+  await controller.openDiagnostic(javaScriptSnapshot);
+  await controller.startChallenge();
+  await controller.submitUnderstanding("异步失败需要处理 rejection");
+  await controller.markCodeFixed();
+
+  const repeat = await controller.openDiagnostic(javaScriptSnapshot);
+  assert.equal(repeat.level?.repeatCount, 1);
+  assert.equal(repeat.level?.scoreMultiplier, 0.5);
+
+  await controller.startChallenge();
+  await controller.submitUnderstanding("异步失败需要处理 rejection");
+  await controller.markCodeFixed();
+
+  assert.equal(logs.length, 2);
+  assert.equal(logs[1].language, "javascript");
+  assert.equal(logs[1].repeatCount, 1);
+  assert.equal(logs[1].scoreMultiplier, 0.5);
+  assert.equal(logs[1].confidenceDelta, 0.03);
+  assert.equal(
+    getModel().concepts["javascript:async_error"]?.confidence,
+    0.08
+  );
 });

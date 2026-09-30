@@ -26,7 +26,10 @@ export interface LanguageRuntimeProfile {
   runtimePathSetting: string;
   isCommandLine: (commandLine: string) => boolean;
   extractScriptPath: (commandLine: string) => string | undefined;
-  parseRuntimeError: (output: string) => ParsedRuntimeError | undefined;
+  parseRuntimeError: (
+    output: string,
+    runningFile?: string
+  ) => ParsedRuntimeError | undefined;
   concepts: readonly MisconceptionId[];
 }
 
@@ -163,7 +166,8 @@ export function resolveRuntimeErrorPath(
 }
 
 export function parseJavaRuntimeError(
-  output: string
+  output: string,
+  runningFile?: string
 ): ParsedRuntimeError | undefined {
   const lines = stripAnsi(output)
     .split(/\r?\n/)
@@ -193,19 +197,54 @@ export function parseJavaRuntimeError(
       continue;
     }
 
+    const frames: Array<{
+      file: string;
+      errorLine: number;
+      platform: boolean;
+    }> = [];
     for (let frameIndex = index + 1; frameIndex < lines.length; frameIndex += 1) {
-      const frame = lines[frameIndex].match(
+      const frameLine = lines[frameIndex];
+      const frame = frameLine.match(
         /^\s*at\s+.+\((.+\.java):(\d+)\)\s*$/
       );
       if (frame) {
-        return {
-          language: "java",
+        frames.push({
           file: frame[1],
           errorLine: Number(frame[2]),
-          message: summary
-        };
+          platform:
+            /^\s*at\s+(?:java\.|jdk\.|javax\.|sun\.|com\.sun\.)/.test(
+              frameLine
+            )
+        });
       }
     }
+
+    if (!frames.length) {
+      continue;
+    }
+
+    const runningFileName = runningFile
+      ? path.basename(runningFile).toLowerCase()
+      : undefined;
+    const preferred = runningFileName
+      ? frames.find(
+          (frame) =>
+            !frame.platform &&
+            path.basename(frame.file).toLowerCase() === runningFileName
+        ) ??
+        frames.find(
+          (frame) =>
+            path.basename(frame.file).toLowerCase() === runningFileName
+        )
+      : undefined;
+    const selected =
+      preferred ?? frames.find((frame) => !frame.platform) ?? frames[0];
+    return {
+      language: "java",
+      file: selected.file,
+      errorLine: selected.errorLine,
+      message: summary
+    };
   }
 
   return undefined;
@@ -315,7 +354,8 @@ export function parseJavaScriptRuntimeError(
 }
 
 function parsePythonLanguageRuntimeError(
-  output: string
+  output: string,
+  _runningFile?: string
 ): ParsedRuntimeError | undefined {
   const parsed = parsePythonRuntimeError(output);
   return parsed ? { language: "python", ...parsed } : undefined;
@@ -332,7 +372,10 @@ export function createLanguageRuntimeProfiles(): Record<
     defaultExecutable: string,
     runtimePathSection: string,
     runtimePathSetting: string,
-    parseRuntimeError: (output: string) => ParsedRuntimeError | undefined
+    parseRuntimeError: (
+      output: string,
+      runningFile?: string
+    ) => ParsedRuntimeError | undefined
   ): LanguageRuntimeProfile => ({
     language,
     displayName,

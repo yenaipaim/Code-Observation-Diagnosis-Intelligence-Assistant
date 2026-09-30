@@ -14,6 +14,7 @@ import {
   recordOutcome,
   setConceptTracked
 } from "../learnerModel";
+import { createChallengeKey } from "../learningLog";
 
 test("correct understanding with a fixed program adds 0.15", () => {
   assert.equal(
@@ -240,6 +241,69 @@ test("learner model store migrates legacy Python keys", async () => {
       0.2
     );
     assert.deepEqual(loaded.trackedConcepts, ["python:off_by_one"]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("learner model store migrates legacy challenge keys by language", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "coach-model-"));
+  const filePath = path.join(directory, "model.json");
+  try {
+    const javaLegacyKey = [
+      "main.java",
+      "null_reference",
+      'java.lang.nullpointerexception: cannot invoke "string.length()" because "text" is null',
+      "class Main { public static void main(String[] args) { String text = null; text.length(); } }"
+    ].join("\n");
+    const javaScriptLegacyKey = [
+      "app.js",
+      "async_error",
+      "unhandledpromiserejection: task failed",
+      "async function run() { await Promise.reject(new Error('failed')); }"
+    ].join("\n");
+
+    await writeFile(
+      filePath,
+      JSON.stringify({
+        user_id: "legacy",
+        concepts: {},
+        challenges: {
+          [javaLegacyKey]: {
+            completions: 2,
+            last_seen: "2026-09-28T10:00:00.000Z"
+          },
+          [javaScriptLegacyKey]: {
+            completions: 1,
+            last_seen: "2026-09-28T10:01:00.000Z"
+          }
+        },
+        trackedConcepts: []
+      }),
+      "utf8"
+    );
+
+    const loaded = await new LearnerModelStore(filePath).load();
+    const javaKey = createChallengeKey({
+      language: "java",
+      file: "Main.java",
+      concept: "null_reference",
+      errorLine: 3,
+      code: "class Main { public static void main(String[] args) { String text = null; text.length(); } }",
+      message:
+        'java.lang.NullPointerException: Cannot invoke "String.length()" because "text" is null'
+    });
+    const javaScriptKey = createChallengeKey({
+      language: "javascript",
+      file: "app.js",
+      concept: "async_error",
+      errorLine: 2,
+      code: "async function run() { await Promise.reject(new Error('failed')); }",
+      message: "UnhandledPromiseRejection: task failed"
+    });
+
+    assert.equal(challengeRepeatCount(loaded, javaKey), 2);
+    assert.equal(challengeRepeatCount(loaded, javaScriptKey), 1);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

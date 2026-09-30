@@ -165,6 +165,19 @@
         complete ? "success" : error ? "error" : ""
       )
     );
+    if (state.demoMode) {
+      const mode = element("div", "meta-row");
+      mode.append(
+        element(
+          "span",
+          "badge",
+          state.apiKeyConfigured
+            ? "已自动切换到演示模式"
+            : "演示模式 · 无需 API"
+        )
+      );
+      app.append(mode);
+    }
 
     if (state.stage === "empty") {
       app.append(element("div", "empty", "运行 Python、Java 或 JavaScript 代码，出现报错后这里会开始引导。"));
@@ -278,6 +291,15 @@
       if (state.answer) {
         const codeSection = element("section", "section");
         codeSection.append(element("div", "eyebrow", "修正代码"));
+        if (state.demoMode) {
+          const demoNotice = element(
+            "p",
+            "demo-code-note",
+            "演示模式生成，代码仅供参考。"
+          );
+          demoNotice.setAttribute("role", "note");
+          codeSection.append(demoNotice);
+        }
         const pre = element("pre", "code-block");
         const code = element("code");
         code.textContent = state.answer.code;

@@ -169,6 +169,13 @@ button svg {
   background: var(--vscode-textCodeBlock-background, #1f1f1f);
 }
 
+.demo-code-note {
+  margin: 0 0 8px;
+  color: var(--coach-warning);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .code-block code {
   font-family: var(--vscode-editor-font-family);
   font-size: 12px;

@@ -1,4 +1,6 @@
 import { judgeByKeywords } from "./hintGenerator";
+import { inferCodePartRange } from "./codePart";
+import { fixDemoAnswerCode } from "./demoCodeFixer";
 import {
   AnswerContent,
   Classification,
@@ -263,6 +265,136 @@ function demoAnswerCode(
   return 'print("Age: " + str(age))';
 }
 
+const PYTHON_DICTIONARY_ACCESS =
+  /([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*((?:\[\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[A-Za-z_]\w*|\d+)\s*\])+)/g;
+const PYTHON_SUBSCRIPT =
+  /\[\s*("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[A-Za-z_]\w*|\d+)\s*\]/g;
+
+function rewritePythonDictionaryAccess(line: string): string | undefined {
+  const access = line.match(PYTHON_DICTIONARY_ACCESS)?.[0];
+  if (!access) {
+    return undefined;
+  }
+
+  const accessMatch = new RegExp(
+    PYTHON_DICTIONARY_ACCESS.source,
+    PYTHON_DICTIONARY_ACCESS.flags
+  ).exec(line);
+  if (!accessMatch || accessMatch.index === undefined) {
+    return undefined;
+  }
+
+  const keys = Array.from(accessMatch[2].matchAll(PYTHON_SUBSCRIPT));
+  if (!keys.length) {
+    return undefined;
+  }
+
+  let replacement = accessMatch[1];
+  keys.forEach((key, index) => {
+    const fallback = index === keys.length - 1 ? '"unknown"' : "{}";
+    replacement += `.get(${key[1]}, ${fallback})`;
+  });
+
+  return [
+    line.slice(0, accessMatch.index),
+    replacement,
+    line.slice(accessMatch.index + accessMatch[0].length)
+  ].join("");
+}
+
+function demoKeyErrorAnswer(
+  language: SupportedLanguage,
+  snapshot: DiagnosticSnapshot,
+  errorLine: number
+): AnswerContent | undefined {
+  if (language !== "python") {
+    return undefined;
+  }
+
+  const range = inferCodePartRange(
+    snapshot.code,
+    language,
+    errorLine,
+    { includeControlBlock: false }
+  );
+  const sourceLines = snapshot.code.replace(/\r\n?/g, "\n").split("\n");
+  const codeLines = sourceLines.slice(
+    range.startLine - 1,
+    range.endLine
+  );
+  const errorIndex = errorLine - range.startLine;
+  const fixedLine = rewritePythonDictionaryAccess(codeLines[errorIndex] ?? "");
+  if (!fixedLine) {
+    return undefined;
+  }
+  codeLines[errorIndex] = fixedLine;
+
+  return {
+    code: codeLines.join("\n"),
+    explanation: DEMO_ANSWER_EXPLANATIONS.key_error,
+    startLine: range.startLine,
+    endLine: range.endLine
+  };
+}
+
+function fixLoopHeader(
+  header: string,
+  language: SupportedLanguage
+): string {
+  if (language === "python") {
+    return header
+      .replace(
+        /range\s*\(\s*len\s*\(([^)]+)\)\s*\+\s*1\s*\)/g,
+        "range(len($1))"
+      )
+      .replace(/<=\s*(len\s*\()/g, "< $1");
+  }
+
+  return header
+    .replace(/<=/g, "<")
+    .replace(/\.length\s*\+\s*1/g, ".length")
+    .replace(/\.size\(\)\s*\+\s*1/g, ".size()");
+}
+
+function demoLoopAnswer(
+  language: SupportedLanguage,
+  snapshot: DiagnosticSnapshot,
+  errorLine: number
+): AnswerContent | undefined {
+  const sourceLines = snapshot.code.replace(/\r\n?/g, "\n").split("\n");
+  const range = inferCodePartRange(
+    snapshot.code,
+    language,
+    errorLine
+  );
+  const headerIndex = range.startLine - 1;
+  const header = sourceLines[headerIndex] ?? "";
+  if (!/\b(?:for|while)\b/.test(header)) {
+    return undefined;
+  }
+
+  const fixedHeader = fixLoopHeader(header, language);
+  const codeLines = sourceLines.slice(
+    range.startLine - 1,
+    range.endLine
+  );
+  codeLines[0] =
+    fixedHeader === header
+      ? `${header.match(/^\s*/)?.[0] ?? ""}${demoAnswerCode(
+          language,
+          "off_by_one",
+          snapshot
+        )}`
+      : fixedHeader;
+
+  return {
+    code: codeLines.join("\n"),
+    explanation: DEMO_ANSWER_EXPLANATIONS.off_by_one,
+    startLine: range.startLine,
+    endLine: range.endLine
+  };
+}
+
 export function demoHint(
   concept: MisconceptionId,
   hintIndex: HintIndex,
@@ -303,6 +435,7 @@ export function demoAnswer(
   concept: MisconceptionId,
   snapshot: DiagnosticSnapshot
 ): AnswerContent {
+  const language = snapshot.language ?? "python";
   const totalLines = Math.max(
     1,
     snapshot.code.replace(/\r\n?/g, "\n").split("\n").length
@@ -311,15 +444,38 @@ export function demoAnswer(
     Math.max(1, Math.trunc(snapshot.errorLine)),
     totalLines
   );
+
+  if (concept === "off_by_one") {
+    const loopAnswer = demoLoopAnswer(language, snapshot, line);
+    if (loopAnswer) {
+      return loopAnswer;
+    }
+  }
+  if (concept === "key_error") {
+    const keyAnswer = demoKeyErrorAnswer(language, snapshot, line);
+    if (keyAnswer) {
+      return keyAnswer;
+    }
+  }
+  const codeAwareAnswer = fixDemoAnswerCode(concept, snapshot, line);
+  if (codeAwareAnswer) {
+    return {
+      ...codeAwareAnswer,
+      explanation: DEMO_ANSWER_EXPLANATIONS[concept]
+    };
+  }
+
+  const range = inferCodePartRange(
+    snapshot.code,
+    language,
+    line,
+    { includeControlBlock: false }
+  );
   return {
-    code: demoAnswerCode(
-      snapshot.language ?? "python",
-      concept,
-      snapshot
-    ),
+    code: demoAnswerCode(language, concept, snapshot),
     explanation: DEMO_ANSWER_EXPLANATIONS[concept],
-    startLine: line,
-    endLine: line
+    startLine: range.startLine,
+    endLine: range.endLine
   };
 }
 

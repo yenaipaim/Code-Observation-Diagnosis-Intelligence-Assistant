@@ -7,6 +7,7 @@ import {
   SupportedLanguage,
   UnderstandingResult
 } from "./types";
+import { inferCodePartRange } from "./codePart";
 
 export interface JsonCompleter {
   completeJson<T>(systemPrompt: string, userPrompt: string): Promise<T>;
@@ -45,6 +46,10 @@ interface JudgmentResponse {
 }
 
 type judgmentValue = "correct" | "partial" | "wrong";
+
+export interface UnderstandingJudgeOptions {
+  throwOnApiError?: boolean;
+}
 
 const DIRECTIONS: Record<MisconceptionId, Record<HintIndex, string>> = {
   off_by_one: {
@@ -192,6 +197,31 @@ function selectAnswerSnippet(
   return code;
 }
 
+function mergeAnswerIntoCodePart(
+  source: string,
+  code: string,
+  requested: { startLine: number; endLine: number },
+  complete: { startLine: number; endLine: number }
+): string {
+  if (
+    requested.startLine === complete.startLine &&
+    requested.endLine === complete.endLine
+  ) {
+    return code;
+  }
+
+  const sourceLines = source.replace(/\r\n?/g, "\n").split("\n");
+  const answerLines = code.replace(/\r\n?/g, "\n").split("\n");
+  return [
+    ...sourceLines.slice(
+      complete.startLine - 1,
+      requested.startLine - 1
+    ),
+    ...answerLines,
+    ...sourceLines.slice(requested.endLine, complete.endLine)
+  ].join("\n");
+}
+
 function numberedCode(code: string): string {
   return code
     .replace(/\r\n?/g, "\n")
@@ -275,10 +305,12 @@ export class HintGenerator {
       [
         `目标是 ${LANGUAGE_LABELS[language]} 代码。`,
         "用户已经尝试并主动点击了“看答案”。",
-        "只给出当前错误需要修改的最小代码片段，不要返回完整文件、完整函数、完整循环或其他未修改代码。",
-        "code 字段必须只包含 startLine 到 endLine 的替换内容，保持原有缩进，不包含 Markdown 代码围栏。",
+        "只修改报错所在的完整代码部分，不要返回完整文件，也不要扩大到无关的函数、循环或代码块。",
+        "完整代码部分必须是一个可以直接替换的语法单位，例如完整语句、完整循环、完整条件、完整函数调用或对应代码块。",
+        "不能只截取报错行：如果报错属于多行语句、多行表达式、循环或代码块，startLine 和 endLine 必须覆盖该部分的全部行。",
+        "code 字段必须包含 startLine 到 endLine 的完整替换内容，保留原有缩进、花括号和代码块内部内容，不包含 Markdown 代码围栏。",
         "startLine 和 endLine 必须使用当前完整代码的 1-based 行号，包含结束行。",
-        "如果错误只涉及一行，startLine 和 endLine 相同；如果跨多行，只返回这些需要替换的行。",
+        "只有修复一个完整单行语句时，startLine 和 endLine 才相同。",
         "explanation 单独解释核心原因，不要在解释里混入完整代码。",
         "不要修改用户文件，只输出教学结果。",
         "输出 JSON：{\"code\":\"...\",\"explanation\":\"...\",\"startLine\":1,\"endLine\":1}"
@@ -305,23 +337,66 @@ export class HintGenerator {
       1,
       totalLines
     );
-    const startLine = lineNumber(
+    const hasRequestedRange =
+      response.startLine !== undefined ||
+      response.endLine !== undefined;
+    const requestedStartLine = lineNumber(
       response.startLine,
       fallbackLine,
       totalLines
     );
-    const endLine = Math.max(
+    const requestedEndLine = Math.max(
+      requestedStartLine,
+      lineNumber(response.endLine, requestedStartLine, totalLines)
+    );
+    const requestedRange = {
+      startLine: requestedStartLine,
+      endLine: requestedEndLine
+    };
+    const completeRange = inferCodePartRange(
+      snapshot.code,
+      language,
+      fallbackLine
+    );
+    const useCompleteRange =
+      !hasRequestedRange ||
+      (requestedRange.startLine >= completeRange.startLine &&
+        requestedRange.endLine <= completeRange.endLine);
+    const startLine = useCompleteRange
+      ? completeRange.startLine
+      : requestedRange.startLine;
+    const endLine = useCompleteRange
+      ? completeRange.endLine
+      : requestedRange.endLine;
+    const answerCode = !hasRequestedRange
+      ? code
+      : useCompleteRange
+        ? mergeAnswerIntoCodePart(
+            snapshot.code,
+            selectAnswerSnippet(
+              code,
+              snapshot.code,
+              requestedRange.startLine,
+              requestedRange.endLine
+            ),
+            requestedRange,
+            completeRange
+          )
+        : selectAnswerSnippet(
+            code,
+            snapshot.code,
+            requestedRange.startLine,
+            requestedRange.endLine
+          );
+    const selectedCode = selectAnswerSnippet(
+      answerCode,
+      snapshot.code,
       startLine,
-      lineNumber(response.endLine, startLine, totalLines)
+      endLine
     );
 
     return {
-      code: selectAnswerSnippet(
-        code,
-        snapshot.code,
-        startLine,
-        endLine
-      ),
+      code: selectedCode,
       explanation,
       startLine,
       endLine
@@ -420,7 +495,8 @@ export async function judgeUnderstanding(
   client?: JsonCompleter,
   snapshot?: DiagnosticSnapshot,
   referenceAnswer?: AnswerContent,
-  userCode?: string
+  userCode?: string,
+  options: UnderstandingJudgeOptions = {}
 ): Promise<UnderstandingResult> {
   const language: SupportedLanguage = snapshot?.language ?? "python";
   if (client) {
@@ -471,7 +547,10 @@ export async function judgeUnderstanding(
           ) / 100
         };
       }
-    } catch {
+    } catch (error) {
+      if (options.throwOnApiError) {
+        throw error;
+      }
       // Fall through to deterministic keyword matching.
     }
   }

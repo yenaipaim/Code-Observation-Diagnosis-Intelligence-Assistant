@@ -47,6 +47,22 @@ test("panel shows answer access, AI closeness and repeat scoring", async () => {
   assert.match(script, /scoreMultiplier/);
 });
 
+test("panel shows automatic demo mode status", async () => {
+  const script = await media("panel.js");
+
+  assert.match(script, /演示模式 · 无需 API/);
+  assert.match(script, /已自动切换到演示模式/);
+});
+
+test("demo answers mark generated code as reference-only", async () => {
+  const script = await media("panel.js");
+  const css = await media("panel.css");
+
+  assert.match(script, /state\.demoMode/);
+  assert.match(script, /演示模式生成，代码仅供参考。/);
+  assert.match(css, /\.demo-code-note/);
+});
+
 test("duplicate errors expose timeline and forced-new-error actions", async () => {
   const script = await media("panel.js");
 

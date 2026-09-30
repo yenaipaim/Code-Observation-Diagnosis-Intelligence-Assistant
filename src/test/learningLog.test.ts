@@ -158,6 +158,25 @@ test("challenge key binds the same error signature", () => {
   );
 });
 
+test("challenge keys isolate repeat scoring by language", () => {
+  const input = {
+    file: "main",
+    concept: "null_reference" as const,
+    errorLine: 3,
+    code: "value.trim();",
+    message: "value is null"
+  };
+
+  assert.notEqual(
+    createChallengeKey({ ...input, language: "python" }),
+    createChallengeKey({ ...input, language: "java" })
+  );
+  assert.notEqual(
+    createChallengeKey({ ...input, language: "java" }),
+    createChallengeKey({ ...input, language: "javascript" })
+  );
+});
+
 test("only real completions count as challenge repeats", () => {
   const completed = createLearningLogEntry({
     challengeKey: "same-key",
@@ -218,6 +237,15 @@ test("learning log store migrates legacy entries to Python", async () => {
           id: "legacy",
           timestamp: "2026-09-23T10:00:00.000Z",
           fileName: "main.py",
+          errorLine: 3,
+          errorMessage: "IndexError: list index out of range",
+          errorCode: [
+            'print("start")',
+            "nums = [1, 2, 3]",
+            "for i in range(len(nums) + 1):",
+            "    print(nums[i])",
+            'print("end")'
+          ].join("\n"),
           concept: "off_by_one",
           resolution: "independent",
           understandingSummary: "完成",
@@ -231,6 +259,11 @@ test("learning log store migrates legacy entries to Python", async () => {
 
     const entries = await new LearningLogStore(filePath).load();
     assert.equal(entries[0].language, "python");
+    assert.equal(
+      entries[0].errorCode,
+      "for i in range(len(nums) + 1):\n    print(nums[i])"
+    );
+    assert.equal(entries[0].errorCodeIsPart, true);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

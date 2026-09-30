@@ -30,6 +30,15 @@ import {
   SupportedLanguage,
   languageConceptKey
 } from "./types";
+import { extractErrorPartCode } from "./codePart";
+
+function errorCodeForSnapshot(snapshot: DiagnosticSnapshot): string {
+  return extractErrorPartCode(
+    snapshot.code,
+    snapshot.language ?? "python",
+    snapshot.errorLine
+  );
+}
 
 export interface ClassificationService {
   (input: DiagnosticSnapshot): Promise<Classification | undefined>;
@@ -76,7 +85,6 @@ export interface CoachControllerOptions {
   judgmentService: JudgmentService;
   modelStore: LearnerModelStore;
   logStore: LearningLogStoreLike;
-  hasApiKey: () => Promise<boolean>;
   demoMode: boolean | (() => boolean);
   publish: (state: PanelState) => void;
 }
@@ -335,13 +343,6 @@ export class CoachController {
       return this.buildState();
     }
 
-    if (!this.isDemoMode() && !(await this.options.hasApiKey())) {
-      this.stage = "configuration";
-      this.message = "请先配置 API，或在设置中开启演示模式。";
-      this.publish();
-      return this.buildState();
-    }
-
     try {
       if (advance) {
         this.machine?.advanceHint();
@@ -424,10 +425,7 @@ export class CoachController {
       return this.buildState();
     }
 
-    if (
-      currentCode?.trim() &&
-      (this.isDemoMode() || (await this.options.hasApiKey()))
-    ) {
+    if (currentCode?.trim()) {
       const result = await this.options.judgmentService(
         level.concept,
         {
@@ -524,13 +522,6 @@ export class CoachController {
       return this.buildState();
     }
 
-    if (!this.isDemoMode() && !(await this.options.hasApiKey())) {
-      this.stage = "configuration";
-      this.message = "查看答案需要配置 API，或使用演示模式。";
-      this.publish();
-      return this.buildState();
-    }
-
     let answer: AnswerContent;
     try {
       answer =
@@ -578,7 +569,8 @@ export class CoachController {
         attempts: level.attempts,
         errorLine: level.errorLine,
         errorMessage: snapshot.message,
-        errorCode: snapshot.code,
+        errorCode: errorCodeForSnapshot(snapshot),
+        errorCodeIsPart: true,
         challengeKey: level.challengeKey,
         repeatCount: level.repeatCount,
         scoreMultiplier: level.scoreMultiplier,
@@ -659,7 +651,10 @@ export class CoachController {
         attempts: level.attempts,
         errorLine: level.errorLine,
         errorMessage: this.snapshot?.message,
-        errorCode: this.snapshot?.code,
+        errorCode: this.snapshot
+          ? errorCodeForSnapshot(this.snapshot)
+          : undefined,
+        errorCodeIsPart: this.snapshot ? true : undefined,
         challengeKey: level.challengeKey,
         repeatCount: level.repeatCount,
         scoreMultiplier: level.scoreMultiplier,
@@ -702,7 +697,10 @@ export class CoachController {
         attempts: level.attempts,
         errorLine: level.errorLine,
         errorMessage: this.snapshot?.message,
-        errorCode: this.snapshot?.code,
+        errorCode: this.snapshot
+          ? errorCodeForSnapshot(this.snapshot)
+          : undefined,
+        errorCodeIsPart: this.snapshot ? true : undefined,
         challengeKey: level.challengeKey,
         repeatCount: level.repeatCount,
         scoreMultiplier: level.scoreMultiplier,
